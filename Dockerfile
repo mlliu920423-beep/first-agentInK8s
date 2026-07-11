@@ -7,7 +7,7 @@ COPY web/ ./
 RUN npm run build
 
 # ---- 2) build go binary ----
-FROM golang:1.24 AS gobuild
+FROM golang:1.26 AS gobuild
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
