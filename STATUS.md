@@ -3,7 +3,7 @@
 > 项目**当前状态 + 决策日志**，进 git、跟代码走。
 > 每次收尾在此更新；跨会话的元知识（工具坑、账号背景等）留在 `~/.claude/memory/`。
 
-**最后更新：2026-07-11**（k8s 部署跑通 🎉）
+**最后更新：2026-07-11 晚**（k8s 部署跑通 🎉；已推 GitHub Private）
 
 ---
 
@@ -37,6 +37,12 @@
   - `12 乘以 7 等于多少` → ✅ `→ math_agent` + `🔧 calculator`
   - `UTC 现在几点` → ✅ `→ ops_agent` + `🔧 current_time`
   - `echo hello agents 然后列一下当前目录` → ⚠️ 部分符合预期（见下方"已知问题"）
+
+### GitHub 远端（07-11 晚）
+- 装了 `gh` CLI（winget `GitHub.cli` v2.96.0，路径 `C:\Program Files\GitHub CLI\gh.exe`）
+- GitHub 账号是 `mlliu920423-beep`，git config email 改成 `mlliu920423-beep@users.noreply.github.com`
+- push 前 `git rebase --root --exec 'git commit --amend --no-edit --reset-author'` 把三条历史 commit 的 author 从 `Bigmay@...` 改成 GitHub 账号邮箱，贡献日历/头像才能挂上
+- 仓库：https://github.com/mlliu920423-beep/first-agentInK8s（**Private**），`origin/main` 已追踪
 
 ---
 
@@ -159,6 +165,7 @@ $env:ARK_MODEL_ID="ep-20260609204306-xj4xt"
 | 2026-07-10 | 项目建 git 仓库；`STATUS.md` 进 git 作为状态唯一入口 | memory 里堆日期版状态用户看不见、换机器丢；`STATUS.md` 跟代码走可 review 可回溯 |
 | 2026-07-11 | Dockerfile `golang:1.24` → `1.26` | go.mod 声明 `go 1.26.4`，1.24 toolchain 编不了 |
 | 2026-07-11 | 每次 build 后手动 `ctr -n k8s.io images import` | Docker Desktop 4.x 的 docker daemon 和内置 k8s containerd 的 image store 分开，即便 GUI 勾了 "Use containerd for images" 也不共享（实测）。写死进 runbook |
+| 2026-07-11 | 推 GitHub Private 仓库 | 首个跑通的 agent 项目，值得留档；日常 `git push` 走 gh 缓存 token，无需单独配 credential |
 
 ---
 
@@ -166,8 +173,8 @@ $env:ARK_MODEL_ID="ep-20260609204306-xj4xt"
 
 - [x] ~~项目是否建 Git 仓库~~ → 已建（07-10）
 - [x] ~~上 k8s~~ → 完成（07-11）
+- [x] ~~推 GitHub 远端仓库~~ → 完成（07-11 Private）
 - [ ] Dockerfile 加 WORKDIR + 样例文件（fix list_dir）
 - [ ] 决定 filesystem MCP 在容器里怎么处理（sidecar / 放弃）
 - [ ] host routing 调优（第三条 prompt 分错 agent）
 - [ ] 老 API Key 排查阶段建的临时 key 是否 revoke
-- [ ] 是否推 GitHub 远端仓库
