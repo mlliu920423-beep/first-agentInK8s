@@ -3,13 +3,13 @@
 > 项目**当前状态 + 决策日志**，进 git、跟代码走。
 > 每次收尾在此更新；跨会话的元知识（工具坑、账号背景等）留在 `~/.claude/memory/`。
 
-**最后更新：2026-07-10**（上次实操 07-06；07-07 ~ 07-09 未动）
+**最后更新：2026-07-10 白天**（用户晚上继续；上次实操 07-06）
 
 ---
 
 ## 一句话现状
 
-本地 `./server.exe` 三条 specialist（math / research / ops）已跑通；上 k8s 卡在 `docker build -t eino-demo:local .` 报错未记录，**下次开工先拿错误再动手**。
+本地 `./server.exe` 三条 specialist（math / research / ops）已跑通；上 k8s 卡在 `docker build -t eino-demo:local .` 报错未记录，**下次开工先跑 `docker build` 拿错误再动手**。今天白天没动代码，只做了工作流整顿：项目建了 git 仓库，状态存档从 memory 迁到本文件。
 
 ---
 
@@ -34,6 +34,11 @@
 ### k8s 脚手架（07-06）
 - `Makefile`：删掉 `kind-load` 目标，`deploy` 直接依赖 `docker`
 - `k8s/deployment.yaml`：`imagePullPolicy` 从 `IfNotPresent` 改成 `Never`
+
+### 工作流整顿（07-10 白天）
+- `git init` + 首次 commit（分支 main，41 文件）；全局配 `user.name=Bigmay` / `user.email=Bigmay@users.noreply.github.com`
+- `web/tsconfig.tsbuildinfo` 加进 `.gitignore`（TS 增量缓存，不该入库）
+- **状态存档规则改了**：本文件（`STATUS.md`）是项目状态的唯一入口，跟代码走进 git；memory 只留跨会话元知识（工具坑、账号背景、约定）
 
 ---
 
@@ -113,10 +118,12 @@ $env:ARK_MODEL_ID="ep-20260609204306-xj4xt"
 | 2026-07-06 | 弃用 kind，走 Docker Desktop 内置 k8s | 与本机 docker 共享 daemon，build 完不用 `kind load`，链路短一节 |
 | 2026-07-06 | `imagePullPolicy: Never` | 本地 image，禁止 fallback 到 registry 拉远端（会失败还慢） |
 | 2026-07-02 | Ark 走在线推理端点 + 按量付费 | Agent Plan 套餐只给 AI 工具用，不能直连 API |
+| 2026-07-10 | 项目建 git 仓库；`STATUS.md` 进 git 作为状态唯一入口 | memory 里堆日期版状态用户看不见、换机器丢；`STATUS.md` 跟代码走可 review 可回溯 |
 
 ---
 
 ## 未决 / TODO
 
-- [ ] 项目是否建 Git 仓库（一直没建，`STATUS.md` 靠覆盖维护）
+- [x] ~~项目是否建 Git 仓库~~ → 已建（07-10）
 - [ ] 老 API Key 排查阶段建的临时 key 是否 revoke
+- [ ] `docker build` 通了以后，是否推 GitHub 远端仓库
