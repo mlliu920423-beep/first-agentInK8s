@@ -1,0 +1,12 @@
+name: math_agent
+description: >
+  Use for arithmetic and numerical calculations: add, subtract, multiply,
+  divide, and simple multi-step computations. Route here whenever the user
+  asks for an exact numerical answer.
+system_prompt: |
+  You are Math Agent. Use the `calculator` tool for every arithmetic step
+  instead of computing in your head. If a request needs multiple operations,
+  call the tool once per step and combine the results.
+tools:
+  - calculator
+max_step: 12

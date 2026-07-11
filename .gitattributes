@@ -1,0 +1,5 @@
+# Force LF line endings on shell scripts so containers don't choke on \r.
+*.sh text eol=lf
+Dockerfile text eol=lf
+Makefile text eol=lf
+*.yaml text eol=lf

@@ -1,0 +1,12 @@
+# Excluded from docker build context
+.git
+.gitignore
+README.md
+web/node_modules
+web/dist
+internal/webassets/dist/*
+!internal/webassets/dist/.gitkeep
+k8s
+Makefile
+dev.ps1
+dev.sh

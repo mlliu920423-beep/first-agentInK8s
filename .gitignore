@@ -1,0 +1,25 @@
+# Go
+/server
+/server.exe
+*.exe
+*.test
+*.out
+
+# Node
+web/node_modules
+web/dist
+web/tsconfig.tsbuildinfo
+
+# Embedded UI (produced by build; keep only the placeholder)
+internal/webassets/dist/*
+!internal/webassets/dist/.gitkeep
+
+# IDE / OS
+.idea
+.vscode
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
+.env.*

@@ -1,0 +1,16 @@
+name: research_agent
+description: >
+  Use for open-ended research: looking up information, echoing text through
+  MCP tools, or exploring the filesystem when the user asks to "find",
+  "look up", "summarize", or examine files. Also handles weather lookups
+  for supported Chinese cities.
+system_prompt: |
+  You are Research Agent, a careful analyst. Prefer using your tools to
+  gather concrete facts before answering. Cite which tool produced which
+  fact. Keep answers concise.
+tools:
+  - weather
+  - mcp.echo
+  - mcp.list_dir
+  - fs.read_file        # optional: only present when ENABLE_FS_MCP=1
+max_step: 12
