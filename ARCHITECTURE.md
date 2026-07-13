@@ -148,37 +148,37 @@ sequenceDiagram
   autonumber
   participant U as Browser
   participant H as HandleChat<br/>httpapi/sse.go
-  participant SK as sink (chan Event)
+  participant SK as sink chan
   participant HMA as host.MultiAgent
   participant HL as Host LLM
-  participant SP as Specialist<br/>(react.Agent)
+  participant SP as Specialist<br/>ReAct
   participant SL as Specialist LLM
   participant T as Tool
 
   U->>H: GET /api/chat?q=12 乘以 7
-  H->>H: 建 sink; 挂 hostCallback
-  H->>HMA: Stream(userMsg)
-  HMA->>HL: chat + [specialists as tools]
-  HL-->>HMA: tool_call(math_agent, "12 * 7")
+  H->>H: 建 sink 并挂 hostCallback
+  H->>HMA: Stream userMsg
+  HMA->>HL: chat + specialists as tools
+  HL-->>HMA: tool_call math_agent
   Note over H,SK: hostCallback 收到 handoff<br/>push agent_switch → sink
-  SK-->>U: SSE: agent_switch{to:math_agent}
-  HMA->>SP: invoke(msg)
+  SK-->>U: SSE agent_switch to=math_agent
+  HMA->>SP: invoke msg
   SP->>SL: react step 1
-  SL-->>SP: tool_call(calculator, {a:12,op:*,b:7})
+  SL-->>SP: tool_call calculator a=12 op=* b=7
   Note over H,SK: 全局 tool 回调 push tool_call → sink
-  SK-->>U: SSE: tool_call{name:calculator}
-  SP->>T: calculator({a:12,op:*,b:7})
-  T-->>SP: {result: 84}
+  SK-->>U: SSE tool_call name=calculator
+  SP->>T: calculator a=12 op=* b=7
+  T-->>SP: result 84
   Note over H,SK: 回调 push tool_result → sink
-  SK-->>U: SSE: tool_result{name:calculator, result:...}
-  SP->>SL: react step 2 (with tool result)
-  SL-->>SP: final: "12 × 7 = 84"
+  SK-->>U: SSE tool_result name=calculator
+  SP->>SL: react step 2 with tool result
+  SL-->>SP: final 12 × 7 = 84
   SP-->>HMA: message chunk
   HMA-->>H: stream chunks
-  H->>SK: push token{delta:"12 × 7 = 84"}
-  SK-->>U: SSE: token{delta:...}
+  H->>SK: push token delta
+  SK-->>U: SSE token
   H->>SK: push done
-  SK-->>U: SSE: done
+  SK-->>U: SSE done
 ```
 
 ### 2.4 数据流 — SSE 事件的三个来源
@@ -191,12 +191,12 @@ flowchart LR
     P3[全局 tool 回调<br/>OnStart / OnEnd]
   end
 
-  P1 -->|Event{token}| SK[sink.ch<br/>buffered chan]
-  P2 -->|Event{agent_switch}| SK
-  P3 -->|Event{tool_call / tool_result}| SK
+  P1 -->|token event| SK[sink.ch<br/>buffered chan]
+  P2 -->|agent_switch event| SK
+  P3 -->|tool_call / tool_result| SK
 
   SK -->|串行读| W[writer goroutine]
-  W -->|data: {json}\n\n| HTTP[HTTP ResponseWriter]
+  W -->|data: JSON frame| HTTP[HTTP ResponseWriter]
   HTTP --> Browser[EventSource-like reader]
 ```
 
