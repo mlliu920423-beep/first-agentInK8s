@@ -1,0 +1,42 @@
+# Routing evals — 每条 case 描述一次用户输入，期望 host 路由到哪个 specialist、
+# （可选）期望在 specialist 内部至少调用哪个工具。
+#
+# 用法：
+#   go run ./cmd/evals -file evals/routing.yaml
+#
+# 需要环境变量 ARK_API_KEY / ARK_MODEL_ID —— 会真实调 LLM，成本可控（每条一次调用）。
+
+cases:
+  # ---- math ----
+  - name: math-basic-multiplication
+    input: "12 乘以 7 等于多少"
+    expect_agent: math_agent
+    expect_tool: calculator
+
+  - name: math-english-arithmetic
+    input: "what is 89 plus 145?"
+    expect_agent: math_agent
+    expect_tool: calculator
+
+  # ---- ops ----
+  - name: ops-utc-time
+    input: "UTC 现在几点"
+    expect_agent: ops_agent
+    expect_tool: current_time
+
+  - name: ops-list-dir
+    input: "帮我看一下当前目录有哪些文件"
+    expect_agent: ops_agent
+    # expect_tool: mcp.list_dir  # 容器里 CWD 是 /，返回空，先不强制断言 tool
+
+  # ---- research ----
+  # 这条是 STATUS.md 已知问题 #3：host 会把它路由到 ops 而不是 research。
+  # 保留在 eval 里作为"红色"case —— 每次改 prompt / description 就能看到有没有修好。
+  - name: research-goroutine
+    input: "帮我查一下 Go 的 goroutine 调度器是怎么工作的"
+    expect_agent: research_agent
+
+  - name: research-weather
+    input: "北京今天天气怎么样"
+    expect_agent: research_agent
+    expect_tool: weather

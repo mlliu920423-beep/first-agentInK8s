@@ -1,0 +1,54 @@
+# lefthook pre-commit hook
+#
+# 跑：
+#   lefthook install    # 安装 git hook（一次性）
+#   git commit ...      # 提交时自动跑
+#   lefthook run pre-commit  # 手动跑
+#
+# 装：
+#   go install github.com/evilmartians/lefthook@latest
+#   （或 winget / scoop）
+#
+# 设计：
+#   - 只跑"快、能拦住 90% 低级错误"的东西
+#   - lint 只跑改动的 Go 文件（{staged_files}），别每次全 repo 扫
+#   - 编译验证放整仓（go build ./... 很快，且能拦跨包破坏）
+
+pre-commit:
+  parallel: true
+  commands:
+    gofmt:
+      # 只对改动的 .go 文件跑 gofmt -l，报错列出未格式化的文件
+      glob: "*.go"
+      run: |
+        unformatted=$(gofmt -l {staged_files})
+        if [ -n "$unformatted" ]; then
+          echo "gofmt: the following files are not formatted:"
+          echo "$unformatted"
+          echo "run: gofmt -w {staged_files}"
+          exit 1
+        fi
+
+    govet:
+      glob: "*.go"
+      # go vet 只对 module 有意义，全跑
+      run: go vet ./...
+
+    gobuild:
+      glob: "*.go"
+      # 编译能过是最低下限；比运行 test 快，比 lint 全
+      run: go build ./...
+
+    golangci-lint:
+      glob: "*.go"
+      # 只对改动的文件跑 lint，快
+      run: golangci-lint run --new-from-rev=HEAD {staged_files}
+      # 若本地没装 golangci-lint 也别卡提交（CI 会兜底）
+      skip:
+        - run: command -v golangci-lint >/dev/null 2>&1 || exit 0
+
+# 未来可以加：commit-msg 阶段跑 conventional commits 校验
+# commit-msg:
+#   commands:
+#     conventional:
+#       run: npx --yes commitlint --edit {1}

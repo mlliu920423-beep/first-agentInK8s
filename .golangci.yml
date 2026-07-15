@@ -1,0 +1,83 @@
+# golangci-lint config for first-agentInK8s
+#
+# 目标：给 AI 生成代码兜个底，别让低级错误进 main。
+# 起手保守，等实际跑起来再按需加/减。
+#
+# 跑：
+#   golangci-lint run
+#
+# 装（Windows / Git Bash）：
+#   go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+#   （或从 https://github.com/golangci/golangci-lint/releases 下 binary）
+
+version: "2"
+
+run:
+  timeout: 3m
+  # 保守：eval / cmd 相对独立，但都要过 lint
+  tests: true
+  # Go 版本对齐 go.mod
+  go: "1.26"
+
+linters:
+  # v2 语法：default off，按需 enable
+  default: none
+  enable:
+    - errcheck      # 未检查错误返回
+    - govet         # go vet
+    - ineffassign   # 无用赋值
+    - staticcheck   # dominici 系列
+    - unused        # 未使用变量 / 函数
+    - gosec         # 常见安全问题
+    - revive        # golint 后继（比 golint 稳）
+    - misspell      # 英文拼写
+    - unconvert     # 无用类型转换
+    - unparam       # 未使用的函数参数
+    - bodyclose     # http.Response.Body 未关
+    - errorlint     # errors.Is / As 惯例
+    - copyloopvar   # loop variable 被闭包捕获（Go 1.22+）
+    - gocritic      # 一堆小 lint 合集
+
+  settings:
+    revive:
+      rules:
+        - name: var-naming
+        - name: package-comments
+          disabled: true  # 我们不是所有 package 都要 doc comment，留手动写的自由
+        - name: exported
+          disabled: true  # 内部包，不强制导出符号写文档
+        - name: unused-parameter
+          disabled: true  # unparam 已覆盖
+    gosec:
+      excludes:
+        - G104  # errcheck 已管未检查错误
+        - G304  # 我们确实要按用户/env 读 agent yaml 路径
+    gocritic:
+      disabled-checks:
+        - ifElseChain
+        - singleCaseSwitch
+
+  exclusions:
+    generated: lax
+    paths:
+      - web/
+      - internal/webassets/dist/
+      - vendor/
+    rules:
+      # main.go 里的 log.Fatalf 之类不应被 gosec 挑
+      - path: cmd/
+        linters:
+          - gosec
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/bigmay/first-agentink8s
