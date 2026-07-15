@@ -34,7 +34,9 @@
 ## 目录约定
 
 ```
-cmd/server/          启动编排（main.go 顶部注释有 8 步启动顺序，别乱序）
+cmd/
+  server/            启动编排（main.go 顶部注释有 8 步启动顺序，别乱序）
+  evals/             路由回归 runner（复用 server boot 流程；`go run ./cmd/evals`）
 internal/
   llm/               Ark ChatModel 工厂（单点，所有 agent 共享一个实例）
   tools/             Tool Registry + 内置技能（calculator / weather / current_time）
@@ -44,10 +46,12 @@ internal/
   httpapi/           /api/chat SSE + /healthz + 静态嵌入
   webassets/         //go:embed all:dist（前端产物必须放这）
 agents/*.yaml        Specialist 声明式配置（每个 yaml 一个 agent）
+evals/               路由回归 case 集（routing.yaml + README.md）
 web/                 React + Vite 前端源码
 k8s/                 deployment / service / secret 模板
 docs/                路线图、ADR（未来）、spec（未来）
-Dockerfile           三阶段：node → go → distroless/static
+.github/workflows/   CI（ci.yml 自动跑 build/vet/lint；evals.yml 手动跑）
+Dockerfile           三阶段：node → go → distroless
 ```
 
 **核心约束：**
@@ -146,7 +150,20 @@ curl -N "http://localhost:8080/api/chat?q=what%20time%20is%20it%20in%20UTC"
 
 # Evals（路由回归测试）
 go run ./cmd/evals -file evals/routing.yaml
+
+# CI 状态（推 main 或 PR 自动跑；evals 需去 Actions 页面手动 dispatch）
+gh run list --workflow=ci.yml --limit 5
+gh run watch  # 看最新一次 run
 ```
+
+---
+
+## GitHub Actions CI 约定
+
+- **`ci.yml`**（push/PR 自动）：`build-and-test` + `lint` 两个 job；前者含 `go build ./... / go vet ./... / server 冒烟`，后者跑 `golangci-lint v2.0 --timeout=5m`。两个 job 都会先 `npm ci && npm run build`，把 `web/dist/` 拷到 `internal/webassets/dist/` —— 因为 `//go:embed all:dist` 要求目录**有内容**才编得过。
+- **`evals.yml`**（手动 `workflow_dispatch` 触发）：跑真实 Ark endpoint 的路由 eval，report 作为 artifact 上传。需要仓库 Secrets `ARK_API_KEY` + `ARK_MODEL_ID`（在 Settings → Secrets and variables → Actions 里加）。
+- **`concurrency.cancel-in-progress: true`**：同分支旧 run 被新 push 顶掉，省 CI 分钟。
+- 改 `.github/workflows/*.yml` 时想到：**前端 stage 那两步 (npm ci + cp dist) 缺一不可**，否则 go build 会因为 `all:dist` 匹配到空目录而报错。
 
 ---
 

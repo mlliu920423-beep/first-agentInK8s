@@ -68,11 +68,11 @@
 
 ### 🟡 一天内（明显提升可靠性）
 
-4. **CI（GitHub Actions）**
-   - `build`：`go build ./...` + `npm run build`（前端 embed 要求 dist 存在）。
-   - `lint`：`golangci-lint run`。
-   - `test`：`go test ./...`（先补 `internal/agentcfg` YAML 解析、`internal/tools` 注册这些纯函数）。
-   - `evals`：跑 routing eval（离线 mock model 或便宜 endpoint）。
+4. **CI（GitHub Actions）** ✅ 07-15 下午
+   - `build`：`go build ./...` + `npm run build`（前端 embed 要求 dist 存在）。 → `ci.yml/build-and-test`
+   - `lint`：`golangci-lint run`。 → `ci.yml/lint`
+   - `test`：`go test ./...`（先补 `internal/agentcfg` YAML 解析、`internal/tools` 注册这些纯函数）。 → **暂未做**（还没 test 可跑）
+   - `evals`：跑 routing eval（离线 mock model 或便宜 endpoint）。 → `evals.yml`，手动 `workflow_dispatch`，需要仓库 Secret `ARK_API_KEY` / `ARK_MODEL_ID`
 
 5. **OpenTelemetry 埋点**
    - 用现有 `host.WithAgentCallbacks`，把回调事件推给 OTel span。

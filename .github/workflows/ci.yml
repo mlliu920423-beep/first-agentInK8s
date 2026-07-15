@@ -1,0 +1,117 @@
+# CI —— push / PR 时自动跑 build + vet + lint。
+#
+# 设计要点：
+#   - 先跑前端 npm build，把产物拷到 internal/webassets/dist/，
+#     否则 //go:embed all:dist 会因为目录空而编译失败（跟 Dockerfile
+#     里第二阶段的 preprocessing 一致）。
+#   - Go 版本对齐 go.mod 里的 1.26.4，`go-version-file` 会自动读。
+#   - golangci-lint 用官方 action，缓存自带；配置读 .golangci.yml。
+#   - evals 不在这里跑（需要 Ark key）。见 evals.yml 里的 workflow_dispatch。
+#
+# 未来可加：
+#   - 前端 lint / typecheck job（现在 `npm run build` 里的 `tsc -b` 已经兜底 typecheck）
+#   - trivy / docker scout 扫 CVE（roadmap §9）
+#   - build docker image + push GHCR（roadmap §12）
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # 允许在 Actions 页面手动触发一次，方便调试
+  workflow_dispatch:
+
+# 同一分支的旧 run 用新 push 覆盖，省 CI 分钟
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: build + vet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build web bundle
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Stage web bundle into embed dir
+        run: |
+          rm -rf internal/webassets/dist
+          mkdir -p internal/webassets/dist
+          cp -r web/dist/. internal/webassets/dist/
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go build
+        run: go build ./...
+
+      - name: go vet
+        run: go vet ./...
+
+      # 冒烟测试：确认 server 二进制真的能启动（缺 ARK env 会 fail-fast，
+      # 我们期待的正是那个 exit code —— 证明启动到了 llm.NewArkModel）。
+      - name: smoke — server exits fast without Ark env
+        run: |
+          go build -o /tmp/server ./cmd/server
+          if /tmp/server 2>&1 | tee smoke.log; then
+            echo "server should have failed without ARK_API_KEY"; exit 1
+          fi
+          grep -q "ARK" smoke.log || (echo "smoke log missing ARK env hint"; exit 1)
+          echo "smoke ok — server fail-fasts on missing Ark env"
+
+  lint:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 前端产物要先 stage 到 embed 目录，否则 lint 也跑不过（go/analysis 也要能加载 package）
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build web bundle
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Stage web bundle into embed dir
+        run: |
+          rm -rf internal/webassets/dist
+          mkdir -p internal/webassets/dist
+          cp -r web/dist/. internal/webassets/dist/
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          # .golangci.yml 里写了 version: "2"，必须用 golangci-lint v2+
+          version: v2.0
+          args: --timeout=5m

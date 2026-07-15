@@ -895,6 +895,10 @@ first-agentInK8s/
 ├── docs/                    # 路线图、ADR（未来）、spec（未来）
 │   └── roadmap-ai-engineering.md
 │
+├── .github/workflows/       # CI（07-15 下午）
+│   ├── ci.yml               # push/PR 自动：build + vet + lint
+│   └── evals.yml            # 手动 workflow_dispatch：routing evals
+│
 ├── web/                     # React + TS + Vite
 │   ├── src/
 │   │   ├── main.tsx

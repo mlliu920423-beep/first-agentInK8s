@@ -3,30 +3,42 @@
 > 项目**当前状态 + 决策日志**，进 git、跟代码走。
 > 每次收尾在此更新；跨会话的元知识（工具坑、账号背景等）留在 `~/.claude/memory/`。
 
-**最后更新：2026-07-15**（工程化第一批 3 个 commit 已 push 到 `origin/main`；roadmap 中三件"立刻能做"完成）
+**最后更新：2026-07-15（下午）**（GitHub Actions CI 上线：`ci.yml` + `evals.yml`）
 
 > 📍 工程化改进路线：[`docs/roadmap-ai-engineering.md`](docs/roadmap-ai-engineering.md)（AI 辅助开发的业界实践 + 本项目改进清单，2026-07-14 起草）
 
-## 2026-07-14 / 07-15 变更
+## 2026-07-15 下午 变更
 
-三个 commit 已推到 `origin/main`（`98234de` → `c0c5ee7`）：
+- **`.github/workflows/ci.yml`** —— push / PR 时自动跑
+  - `build-and-test` job：npm build → stage 前端到 embed 目录 → `go build ./...` → `go vet ./...` → server 冒烟启动（预期缺 Ark env 会 fail-fast）
+  - `lint` job：同样先 stage 前端 → `golangci-lint v2.0` 全仓扫描（第一次跑观察 report，再按需调 `.golangci.yml`）
+  - `concurrency.cancel-in-progress`：同分支旧 run 被新 push 覆盖，省 CI 分钟
+- **`.github/workflows/evals.yml`** —— 手动 `workflow_dispatch` 触发（暂不 auto-run）
+  - 需要仓库 Secrets：`ARK_API_KEY` + `ARK_MODEL_ID`
+  - 跑 `go run ./cmd/evals`，report 作为 artifact 上传
+  - **待你做**：GitHub 仓库 → Settings → Secrets and variables → Actions 添加两个 secret
+
+**Runtime 未变**（仅新增 `.github/workflows/*.yml`），无需重部署。
+
+**尚未做（下一次会话优先级）：**
+1. 首次 CI run 后看 lint report，按需调 `.golangci.yml`（预计需要给 `cmd/` 加豁免或改历史代码）
+2. GitHub 仓库加 `ARK_API_KEY` / `ARK_MODEL_ID` secret → 手动触发一次 evals workflow → 观察 `research-goroutine` 是否红
+3. 依据 eval 结果调 host prompt / research description
+4. 本机装 `golangci-lint` + `lefthook`（可选，CI 兜底后本机装不装差别不大）
+
+## 2026-07-14 / 07-15 上午 变更
+
+三个 commit 已推到 `origin/main`（`98234de` → `30ccabc`）：
 
 | commit | 说明 |
 |---|---|
-| `6e29d87 chore(deps)` | `go mod tidy` —— `eino` / `eino-ext/*` / `mcp-go` / `yaml.v3` 从 indirect 升到 direct（历史元数据清理，无 runtime 变化）|
-| `2aed52c docs` | 新增 `CLAUDE.md`（AI 会话上下文，锁死技术栈 + Ark endpoint 授权坑 + `ctr import` 流程 + 加 sub-agent 规范）；新增 `docs/roadmap-ai-engineering.md`（业界实践 + 13 项改进清单） |
-| `c0c5ee7 feat(evals+lint)` | `evals/routing.yaml` + `cmd/evals`（路由回归，6 case，含 STATUS 已知问题 #3 的红色 case）+ `.golangci.yml` + `lefthook.yml` |
+| `6e29d87 chore(deps)` | `go mod tidy` —— `eino` / `eino-ext/*` / `mcp-go` / `yaml.v3` 从 indirect 升到 direct |
+| `2aed52c docs` | 新增 `CLAUDE.md` + `docs/roadmap-ai-engineering.md` |
+| `c0c5ee7 feat(evals+lint)` | `evals/routing.yaml` + `cmd/evals` + `.golangci.yml` + `lefthook.yml` |
+| `54be7be docs(status)` | 07-15 上午 checkpoint |
+| `30ccabc docs(architecture)` | ARCHITECTURE.md 同步（时间戳、目录树、§13.7 评估章节改写）|
 
 **验证：** `go build ./...` + `go vet ./...` 均通过。运行时二进制 / 镜像 / pod 行为**未变**，无需 `docker build` / `kubectl apply`。生产 pod 沿用 07-11 部署。
-
-**尚未做（下一次会话优先级）：**
-1. 装 `golangci-lint` + `lefthook`（本机未装），跑第一次 lint，按 report 调 `.golangci.yml`：
-   - `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`（或 releases binary）
-   - `go install github.com/evilmartians/lefthook@latest`（或 winget / scoop）
-   - `golangci-lint run` → 逐条判断"修" vs "豁免"
-   - `lefthook install` 装 git hook
-2. `go run ./cmd/evals`（需 `ARK_API_KEY` / `ARK_MODEL_ID`）—— 实测 `research-goroutine` 是不是仍是红色 case，然后开工调 host prompt / research description，反复跑 eval 卡绿。
-3. GitHub Actions CI（roadmap §4）：把 `go build` + `go vet` + `golangci-lint` + `evals` 挂上去，让 PR 有红绿。
 
 ---
 
@@ -71,7 +83,9 @@
 - **`CLAUDE.md`** —— AI 会话首读文件，锁死技术栈版本 + Ark endpoint 授权坑 + `ctr import` 流程 + 加 sub-agent 规范
 - **`docs/roadmap-ai-engineering.md`** —— 业界五层实践总结 + 本项目 13 项改进 backlog
 - **`evals/routing.yaml` + `cmd/evals`** —— 路由回归 eval 骨架，`go run ./cmd/evals` 卡红绿；6 条 case 已编，含 STATUS 问题 #3 的"红色 case"
-- **`.golangci.yml` + `lefthook.yml`** —— lint / pre-commit 配置起草完毕，本地工具链**尚未装**（roadmap 未闭环）
+- **`.golangci.yml` + `lefthook.yml`** —— lint / pre-commit 配置起草完毕，本地工具链**尚未装**（CI 已兜底）
+- **`.github/workflows/ci.yml`** —— push / PR 自动跑 `build + vet + lint + server 冒烟`（07-15 下午）
+- **`.github/workflows/evals.yml`** —— 手动触发跑 routing evals（需仓库 Secret `ARK_API_KEY` / `ARK_MODEL_ID`）
 - **`go.mod` 元数据清理** —— 直接依赖脱离 `// indirect`
 
 ---
@@ -101,10 +115,11 @@ tools: optional tool "fs.read_file" not registered (external MCP disabled?), ski
 
 ## 下一步（按顺序，可选）
 
-### 0. 收尾工程化基线（07-14 起草，未闭环）
-- 装 `golangci-lint` + `lefthook`，跑第一次 lint，按 report 调 `.golangci.yml`；`lefthook install` 装 git hook
-- 跑一次 `go run ./cmd/evals`，实测 `research-goroutine` 红色 case
-- GitHub Actions CI（roadmap §4）：`build` + `vet` + `lint` + `evals` 四个 job
+### 0. 收尾工程化基线（07-14 起草，进行中）
+- ✅ `CLAUDE.md` + roadmap + evals 骨架 + lint 配置 + CI workflow
+- [ ] **第一次 CI run 后按 lint report 调 `.golangci.yml`** —— 预计需要给 `cmd/` 加豁免或改历史代码
+- [ ] **GitHub 仓库加 `ARK_API_KEY` / `ARK_MODEL_ID` secret**（Settings → Secrets and variables → Actions），然后手动触发一次 evals workflow
+- [ ] （可选）本机装 `golangci-lint` + `lefthook`（CI 兜底后 nice-to-have）
 
 ### 1. 打磨部署产物
 - Dockerfile 加 `WORKDIR /data` + 样例文件（解决 list_dir 空结果）
@@ -204,6 +219,7 @@ $env:ARK_MODEL_ID="ep-20260609204306-xj4xt"
 | 2026-07-14 | 引入 `evals/` + `cmd/evals` 作为路由回归骨架 | Roadmap §4 观点：AI 项目里 eval = 传统单测。改 host prompt / description 后手点浏览器不 scalable，要卡红绿 |
 | 2026-07-14 | 加 `CLAUDE.md` 作为 AI 会话首读文件 | 跨 AI 会话（Claude Code / Cursor / Codex）稳定的项目约束，避免每次重新踩 Ark 401 / Go 版本 / ctr import 那些坑 |
 | 2026-07-14 | 选 `golangci-lint` + `lefthook` 而不是 `pre-commit` + `revive` | lefthook 单 Go binary、Windows/Linux 一致；golangci-lint 是社区默认 aggregator。装工具尚未闭环 |
+| 2026-07-15 | GitHub Actions CI 拆两个 workflow：`ci.yml` 自动跑 build/vet/lint，`evals.yml` 手动触发 | evals 需要真 Ark key + 花钱，分离触发方式能让 CI 稳定绿而不受 endpoint / 网络影响；等观察一段时间再考虑要不要把 evals 挂到 PR |
 
 ---
 
@@ -215,9 +231,11 @@ $env:ARK_MODEL_ID="ep-20260609204306-xj4xt"
 - [x] ~~加 `CLAUDE.md` / 工程化 roadmap~~ → 完成（07-14）
 - [x] ~~路由回归 eval 骨架~~ → 完成（07-14，红色 case 待实测）
 - [x] ~~`golangci-lint` / `lefthook` 配置~~ → 配置起草完成（07-14），本机工具链未装
+- [x] ~~GitHub Actions CI~~ → build/vet/lint 自动 + evals 手动（07-15 下午）
 - [ ] 装 `golangci-lint` + `lefthook`，跑第一次 lint 并按 report 调配置
-- [ ] `go run ./cmd/evals` 实测，`research-goroutine` 转绿
-- [ ] GitHub Actions CI（build + vet + lint + evals）
+- [ ] 首次 CI run 后按 report 调 `.golangci.yml`
+- [ ] GitHub Secrets 加 `ARK_API_KEY` / `ARK_MODEL_ID`，手动触发 evals workflow
+- [ ] `go run ./cmd/evals` 实测（或走 CI），`research-goroutine` 转绿
 - [ ] Dockerfile 加 WORKDIR + 样例文件（fix list_dir）
 - [ ] 决定 filesystem MCP 在容器里怎么处理（sidecar / 放弃）
 - [ ] 老 API Key 排查阶段建的临时 key 是否 revoke

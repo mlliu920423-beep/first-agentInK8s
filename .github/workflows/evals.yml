@@ -1,0 +1,79 @@
+# Routing evals —— 用真实 Ark endpoint 跑路由回归测试。
+#
+# 触发方式：
+#   - 手动：GitHub Actions 页面 → "evals" → Run workflow
+#   - （未来可选）改成 push/PR 自动跑：把 workflow_dispatch 之外的
+#     trigger 打开，成本 = 每次 push 一次 Ark 调用（~几分钱）
+#
+# 需要的 Secrets（在仓库 Settings → Secrets and variables → Actions 里加）：
+#   - ARK_API_KEY   —— 火山方舟 API Key
+#   - ARK_MODEL_ID  —— endpoint id，如 ep-20260609204306-xj4xt
+#
+# 缺 secret 时 job 会因为 llm.NewArkModel fail-fast 而失败 —— 这是"合理的红"，
+# 不是 CI bug。加上 secret 就能跑。
+
+name: evals
+
+on:
+  workflow_dispatch:
+    inputs:
+      file:
+        description: "case yaml path"
+        required: false
+        default: "evals/routing.yaml"
+
+concurrency:
+  group: evals-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  routing:
+    name: routing regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # 前端 stage 是 //go:embed all:dist 的前置条件（同 ci.yml）
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build web bundle
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Stage web bundle into embed dir
+        run: |
+          rm -rf internal/webassets/dist
+          mkdir -p internal/webassets/dist
+          cp -r web/dist/. internal/webassets/dist/
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run evals
+        env:
+          ARK_API_KEY: ${{ secrets.ARK_API_KEY }}
+          ARK_MODEL_ID: ${{ secrets.ARK_MODEL_ID }}
+        run: |
+          if [ -z "$ARK_API_KEY" ] || [ -z "$ARK_MODEL_ID" ]; then
+            echo "::error::ARK_API_KEY / ARK_MODEL_ID secret 未设置。在仓库 Settings → Secrets → Actions 里加。"
+            exit 1
+          fi
+          go run ./cmd/evals -file '${{ inputs.file }}' | tee evals-report.txt
+
+      - name: Upload evals report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evals-report
+          path: evals-report.txt
