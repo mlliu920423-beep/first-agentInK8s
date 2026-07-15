@@ -3,28 +3,45 @@
 > 项目**当前状态 + 决策日志**，进 git、跟代码走。
 > 每次收尾在此更新；跨会话的元知识（工具坑、账号背景等）留在 `~/.claude/memory/`。
 
-**最后更新：2026-07-15（下午）**（GitHub Actions CI 上线：`ci.yml` + `evals.yml`）
+**最后更新：2026-07-15（傍晚）**（GitHub Actions CI 转绿：lint 修完 3 条 findings + 2 条豁免）
 
 > 📍 工程化改进路线：[`docs/roadmap-ai-engineering.md`](docs/roadmap-ai-engineering.md)（AI 辅助开发的业界实践 + 本项目改进清单，2026-07-14 起草）
+
+## 2026-07-15 傍晚 变更
+
+**CI 转绿的过程**（4 个 commit：`2b20bb5` → `af48c9d`）：
+
+| commit | 问题 | 修法 |
+|---|---|---|
+| `2b20bb5` | smoke test 里 `if server | tee` 因 tee 恒 0 永远走 true 分支 | `set +e` + `$PIPESTATUS[0]` 显式取前段退出码 |
+| `028578d` | `golangci-lint-action@v7 version: v2.0` 拉到 v2.0.2（Go 1.24 编），拒绝加载 `go: "1.26"` 的 config | 升到 `version: v2.12`（Go 1.26 编） |
+| `fdaa560` | 3 条实际 findings：evals/main.go 未 gofmt、filesystem.go log 日志 taint、server/main.go 7 处 `log.Fatalf` 与 `defer` 组合被 gocritic exitAfterDefer 挑 | gofmt -w / `%s` → `%q` / `log.Fatalf` → `log.Printf + os.Exit(1)` |
+| `af48c9d` | 上一 commit 后仍有 2 条：gocritic 认所有"defer + 进程终止"（`os.Exit` 也算）；gosec G706 是静态 taint 追踪，`%q` 运行时转义救不了 | `.golangci.yml` 加两条**精准豁免**，附注释解释 tradeoff |
+
+**关键坑（写进决策日志）：**
+- `golangci-lint-action` 用 `version: vX.Y` 系列 pin 会拉到该系列**最老**的 patch 版本，不是最新。Config 里的 `go:` 版本比 binary 的编译 Go 版本高就报 `can't load config`。要么 pin 到具体版本，要么用够新的 major.minor。
+- gocritic `exitAfterDefer` 语义广：`log.Fatal` / `os.Exit` / `panic` 都算 —— 修 `log.Fatalf` → `os.Exit` 换汤不换药。
+- gosec `G706` 是静态 taint 追踪，格式化 verb 改成 `%q` 只影响运行时，静态分析层面变量还是 tainted。要根治只能 taint 源头（不用 env 变量）或豁免。
+
+**Runtime 未变**（只改 CI 配置 + `cmd/server/main.go` 的错误处理形状），无需重部署。
+
+**尚未做（下一次会话优先级）：**
+1. ~~首次 CI run 后看 lint report~~ ✅
+2. GitHub 仓库加 `ARK_API_KEY` / `ARK_MODEL_ID` secret → 手动触发一次 evals workflow → 观察 `research-goroutine` 是否红
+3. 依据 eval 结果调 host prompt / research description
+4. 本机装 `golangci-lint` + `lefthook`（可选，CI 兜底后本机装不装差别不大）
+5. （小）actions/*  升级到 Node 24 版本，消除 deprecation warning
 
 ## 2026-07-15 下午 变更
 
 - **`.github/workflows/ci.yml`** —— push / PR 时自动跑
   - `build-and-test` job：npm build → stage 前端到 embed 目录 → `go build ./...` → `go vet ./...` → server 冒烟启动（预期缺 Ark env 会 fail-fast）
-  - `lint` job：同样先 stage 前端 → `golangci-lint v2.0` 全仓扫描（第一次跑观察 report，再按需调 `.golangci.yml`）
+  - `lint` job：同样先 stage 前端 → `golangci-lint` 全仓扫描（傍晚 batch 转绿后稳定跑）
   - `concurrency.cancel-in-progress`：同分支旧 run 被新 push 覆盖，省 CI 分钟
 - **`.github/workflows/evals.yml`** —— 手动 `workflow_dispatch` 触发（暂不 auto-run）
   - 需要仓库 Secrets：`ARK_API_KEY` + `ARK_MODEL_ID`
   - 跑 `go run ./cmd/evals`，report 作为 artifact 上传
   - **待你做**：GitHub 仓库 → Settings → Secrets and variables → Actions 添加两个 secret
-
-**Runtime 未变**（仅新增 `.github/workflows/*.yml`），无需重部署。
-
-**尚未做（下一次会话优先级）：**
-1. 首次 CI run 后看 lint report，按需调 `.golangci.yml`（预计需要给 `cmd/` 加豁免或改历史代码）
-2. GitHub 仓库加 `ARK_API_KEY` / `ARK_MODEL_ID` secret → 手动触发一次 evals workflow → 观察 `research-goroutine` 是否红
-3. 依据 eval 结果调 host prompt / research description
-4. 本机装 `golangci-lint` + `lefthook`（可选，CI 兜底后本机装不装差别不大）
 
 ## 2026-07-14 / 07-15 上午 变更
 
@@ -220,6 +237,8 @@ $env:ARK_MODEL_ID="ep-20260609204306-xj4xt"
 | 2026-07-14 | 加 `CLAUDE.md` 作为 AI 会话首读文件 | 跨 AI 会话（Claude Code / Cursor / Codex）稳定的项目约束，避免每次重新踩 Ark 401 / Go 版本 / ctr import 那些坑 |
 | 2026-07-14 | 选 `golangci-lint` + `lefthook` 而不是 `pre-commit` + `revive` | lefthook 单 Go binary、Windows/Linux 一致；golangci-lint 是社区默认 aggregator。装工具尚未闭环 |
 | 2026-07-15 | GitHub Actions CI 拆两个 workflow：`ci.yml` 自动跑 build/vet/lint，`evals.yml` 手动触发 | evals 需要真 Ark key + 花钱，分离触发方式能让 CI 稳定绿而不受 endpoint / 网络影响；等观察一段时间再考虑要不要把 evals 挂到 PR |
+| 2026-07-15 | `.golangci.yml` 加两条精准豁免（server exitAfterDefer / filesystem G706）而不是改代码结构 | server bootstrap 抽 `run() error` 只为过 lint 是纯 ceremony，`cancel()` 在失败路径漏跑无害；filesystem taint 源是本地 env 不是网络输入，gosec 判定过严。豁免带 inline 注释解释 tradeoff |
+| 2026-07-15 | `golangci-lint-action` pin 到 `version: v2.12`（不是 `v2.0`） | action 用 `vX.Y` 系列 pin 会拉该系列最老 patch（v2.0.2 = Go 1.24 编），拒绝加载 `go: "1.26"` 的 config。升级到 v2.12（2026-05 release，Go 1.26 编）才能真正跑规则 |
 
 ---
 
@@ -232,8 +251,8 @@ $env:ARK_MODEL_ID="ep-20260609204306-xj4xt"
 - [x] ~~路由回归 eval 骨架~~ → 完成（07-14，红色 case 待实测）
 - [x] ~~`golangci-lint` / `lefthook` 配置~~ → 配置起草完成（07-14），本机工具链未装
 - [x] ~~GitHub Actions CI~~ → build/vet/lint 自动 + evals 手动（07-15 下午）
+- [x] ~~首次 CI run 后按 report 调 `.golangci.yml`~~ → 完成（07-15 傍晚，run `29411625130` 全绿）
 - [ ] 装 `golangci-lint` + `lefthook`，跑第一次 lint 并按 report 调配置
-- [ ] 首次 CI run 后按 report 调 `.golangci.yml`
 - [ ] GitHub Secrets 加 `ARK_API_KEY` / `ARK_MODEL_ID`，手动触发 evals workflow
 - [ ] `go run ./cmd/evals` 实测（或走 CI），`research-goroutine` 转绿
 - [ ] Dockerfile 加 WORKDIR + 样例文件（fix list_dir）
