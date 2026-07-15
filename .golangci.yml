@@ -68,6 +68,20 @@ linters:
       - path: cmd/
         linters:
           - gosec
+      # cmd/server 是 bootstrap，signal.NotifyContext 拿到的 cancel 挂到 defer 上是
+      # 惯例（收正常退出信号时释放），但 bootstrap 失败路径必须立刻退进程；
+      # gocritic exitAfterDefer 会把每处 os.Exit / log.Fatal 都挑，接受这个 tradeoff：
+      # bootstrap 失败时 cancel 漏跑无害（进程整体退出），SIGINT 正常关停路径依旧走 defer。
+      - path: cmd/server/
+        linters:
+          - gocritic
+        text: "exitAfterDefer"
+      # internal/mcp/filesystem: root / npxPath 来自本地 env（FS_MCP_ROOT / PATH），
+      # 不是网络输入，gosec 对 taint 判断过严；日志已用 %q 转义，风险可接受。
+      - path: internal/mcp/filesystem\.go
+        linters:
+          - gosec
+        text: "G706"
 
 issues:
   max-issues-per-linter: 0
