@@ -68,14 +68,22 @@ jobs:
 
       # 冒烟测试：确认 server 二进制真的能启动（缺 ARK env 会 fail-fast，
       # 我们期待的正是那个 exit code —— 证明启动到了 llm.NewArkModel）。
+      #
+      # 坑点：bash pipeline 默认取最后一条命令的退出码，`... | tee` 里 tee 一直是 0，
+      # 所以 `if server | tee` 永远取 true 分支。用 set +e + $PIPESTATUS 显式取
+      # 前半段真实退出码，比 pipefail 更少歧义。
       - name: smoke — server exits fast without Ark env
         run: |
           go build -o /tmp/server ./cmd/server
-          if /tmp/server 2>&1 | tee smoke.log; then
+          set +e
+          /tmp/server 2>&1 | tee smoke.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          if [ "$rc" -eq 0 ]; then
             echo "server should have failed without ARK_API_KEY"; exit 1
           fi
           grep -q "ARK" smoke.log || (echo "smoke log missing ARK env hint"; exit 1)
-          echo "smoke ok — server fail-fasts on missing Ark env"
+          echo "smoke ok — server fail-fasts on missing Ark env (exit=$rc)"
 
   lint:
     name: golangci-lint
@@ -110,8 +118,9 @@ jobs:
           cache: true
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
-          # .golangci.yml 里写了 version: "2"，必须用 golangci-lint v2+
+          # .golangci.yml 里写了 version: "2"，必须用 golangci-lint v2+；
+          # golangci-lint-action v7 是首个支持 v2 schema 的版本（v6 会拒 v2.0）。
           version: v2.0
           args: --timeout=5m
