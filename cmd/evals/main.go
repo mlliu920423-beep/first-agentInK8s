@@ -51,11 +51,11 @@ type File struct {
 
 // Trace holds per-case observations collected from callbacks.
 type Trace struct {
-	mu           sync.Mutex
-	AgentSwitch  []string
-	ToolCalls    []string
-	Tokens       int
-	StreamErr    error
+	mu          sync.Mutex
+	AgentSwitch []string
+	ToolCalls   []string
+	Tokens      int
+	StreamErr   error
 }
 
 func (t *Trace) addSwitch(name string) {

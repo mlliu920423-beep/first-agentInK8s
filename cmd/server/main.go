@@ -47,13 +47,15 @@ func main() {
 	// 1. Ark model
 	arkModel, err := llm.NewArkModel(ctx)
 	if err != nil {
-		log.Fatalf("llm: %v", err)
+		log.Printf("llm: %v", err)
+		os.Exit(1)
 	}
 
 	// 2. Tool registry + built-ins
 	reg := tools.NewRegistry()
 	if err := tools.RegisterBuiltins(ctx, reg); err != nil {
-		log.Fatalf("register builtins: %v", err)
+		log.Printf("register builtins: %v", err)
+		os.Exit(1)
 	}
 
 	// 3. MCP sources — warn-and-continue if any fail
@@ -73,7 +75,8 @@ func main() {
 	// 4. Agent YAML configs
 	cfgs, err := agentcfg.Load(agentsDir)
 	if err != nil {
-		log.Fatalf("agentcfg: %v", err)
+		log.Printf("agentcfg: %v", err)
+		os.Exit(1)
 	}
 	log.Printf("loaded %d agent configs from %s", len(cfgs), agentsDir)
 
@@ -82,7 +85,8 @@ func main() {
 	for _, cfg := range cfgs {
 		sp, err := agents.BuildSpecialist(ctx, arkModel, cfg, reg)
 		if err != nil {
-			log.Fatalf("build specialist %q: %v", cfg.Name, err)
+			log.Printf("build specialist %q: %v", cfg.Name, err)
+			os.Exit(1)
 		}
 		specialists = append(specialists, sp)
 		log.Printf("specialist ready: %s — %d tools", cfg.Name, len(cfg.Tools))
@@ -91,7 +95,8 @@ func main() {
 	// 6. Host multi-agent
 	hostMA, err := agents.BuildHost(ctx, arkModel, agents.DefaultHostPrompt, specialists)
 	if err != nil {
-		log.Fatalf("build host multi-agent: %v", err)
+		log.Printf("build host multi-agent: %v", err)
+		os.Exit(1)
 	}
 
 	// 7. Global tool callback hook — must be installed before the first request
@@ -100,7 +105,8 @@ func main() {
 	// 8. HTTP server
 	distFS, err := webassets.FS()
 	if err != nil {
-		log.Fatalf("webassets: %v", err)
+		log.Printf("webassets: %v", err)
+		os.Exit(1)
 	}
 	apiSrv := &httpapi.Server{HostMA: hostMA}
 
@@ -118,7 +124,8 @@ func main() {
 	go func() {
 		log.Printf("listening on :%s (dev: http://localhost:%s)", port, port)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("http: %v", err)
+			log.Printf("http: %v", err)
+			os.Exit(1)
 		}
 	}()
 

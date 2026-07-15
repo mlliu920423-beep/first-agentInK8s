@@ -54,7 +54,7 @@ func StartFilesystem(ctx context.Context, reg *tools.Registry) (io.Closer, error
 		return nil, nil
 	}
 
-	log.Printf("mcp/filesystem: launching %s -y @modelcontextprotocol/server-filesystem %s", npxPath, root)
+	log.Printf("mcp/filesystem: launching %q -y @modelcontextprotocol/server-filesystem %q", npxPath, root)
 	cli, err := mcpclient.NewStdioMCPClient(
 		npxPath, nil,
 		"-y", "@modelcontextprotocol/server-filesystem", root,
