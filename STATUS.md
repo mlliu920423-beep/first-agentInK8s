@@ -3,7 +3,20 @@
 > 项目**当前状态 + 决策日志**，进 git、跟代码走。
 > 每次收尾在此更新；跨会话的元知识（工具坑、账号背景等）留在 `~/.claude/memory/`。
 
-**最后更新：2026-07-11 晚**（k8s 部署跑通 🎉；已推 GitHub Private）
+**最后更新：2026-07-14**（工程化第一批落地：CLAUDE.md + evals + golangci-lint/lefthook）
+
+> 📍 工程化改进路线：[`docs/roadmap-ai-engineering.md`](docs/roadmap-ai-engineering.md)（AI 辅助开发的业界实践 + 本项目改进清单，2026-07-14 起草）
+
+## 2026-07-14 变更
+
+- **`CLAUDE.md`**（项目根）：AI 会话上下文，锁死技术栈版本 + Ark endpoint 授权坑 + `ctr import` 流程 + 加 sub-agent/工具的规范。任何 AI 打开项目先读这个。
+- **`evals/routing.yaml` + `cmd/evals`**：路由回归 eval，6 条 case（含 STATUS 已知问题 #3 的"红色 case"），`go run ./cmd/evals` 一键跑，退出码卡红绿。用法看 [`evals/README.md`](evals/README.md)。
+- **`.golangci.yml` + `lefthook.yml`**：lint 配置起手（errcheck/govet/staticcheck/gosec/revive 等）+ pre-commit hook（gofmt/vet/build/lint 增量跑）。
+  - ⚠️ **待验证**：本地未装 `golangci-lint` 和 `lefthook`，配置只做了静态起草。装完后需要：
+    1. `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`（或从 releases 下 binary）
+    2. `go install github.com/evilmartians/lefthook@latest`（或 winget/scoop）
+    3. `golangci-lint run` 跑一遍，按 report 调 `.golangci.yml`（预计会挑出一些历史遗留，需要逐条判断"修" vs "豁免"）
+    4. `lefthook install` 装 git hook
 
 ---
 
