@@ -3,11 +3,39 @@
 > 项目**当前状态 + 决策日志**，进 git、跟代码走。
 > 每次收尾在此更新；跨会话的元知识（工具坑、账号背景等）留在 `~/.claude/memory/`。
 
-**最后更新：2026-07-16（上午）**（**方向转换**：demo → workbuddy 演化 + 工业级流程 setup）
+**最后更新：2026-07-16（傍晚）**（Phase 0 收尾 + Phase 1 spec 起草中，待用户 review）
 
 > 📍 **workbuddy 转型 vision**：[`docs/specs/workbuddy-vision.md`](docs/specs/workbuddy-vision.md)（本项目从 demo 演化为可配置多 agent 产品的 MVP 边界；下一阶段主线）
 > 📍 工程化改进路线：[`docs/roadmap-ai-engineering.md`](docs/roadmap-ai-engineering.md)（AI 辅助开发的业界实践 + 本项目改进清单，2026-07-14 起草，多数已落地）
-> 📍 架构决策记录：[`docs/adr/`](docs/adr/)（每决策一份，从 001 单二进制 / 002 Eino / 003 distroless 起）
+> 📍 架构决策记录：[`docs/adr/`](docs/adr/)（每决策一份，从 001 单二进制 / 002 Eino / 003 distroless / 004 branch protection 起）
+
+## 2026-07-16 傍晚 Phase 0 收尾 + Phase 1 起手
+
+**Phase 0 已完成** —— 转型元流程 setup 全部落地：
+
+- ✅ 仓库从 **Private 转 Public**（GitHub Free 私有仓库不支持 branch protection；详见 [ADR-004](docs/adr/004-branch-protection-on-main.md)）
+- ✅ **Secret scanning + Push protection + Dependabot security updates** 全部启用（`gh api PATCH` 一把改）
+- ✅ **`main` 分支 branch protection** 生效：required PR + required checks (`build + vet` / `golangci-lint`) + enforce_admins + no force-push + required_conversation_resolution
+- ✅ **Adversarial test 通过**：`git push origin main` 被拒（`remote: error: GH006: Protected branch update failed`）
+- ✅ **PR #5 合入 main**（squash-merge `6a52da5`）—— **第一个走完整 branch protection 流程的 PR**，Phase 0 正式收尾。产出：spec + ADR 模板、ADR-001~004、workbuddy-vision.md、PR 模板、CLAUDE.md 硬规矩生效
+- ✅ 踩过一个坑：branch protection 里的 `contexts` 数组填的是 **job display name**（`build + vet`）不是 job key（`build-and-test`），app_id null 是没匹配的信号。修正后 app_id 15368 出现。已存 memory `github-required-check-name-uses-display-name`
+
+**Phase 1 起手**（feature branch `feat/mcp-declarative-loading`，仅 spec，未推）：
+
+- ✅ **`docs/specs/phase-1-mcp-declarative-loading.md`** 已起草（376 行，Draft 状态，待用户 review）
+- 一句话摘要：把 `internal/mcp/{inproc,filesystem}.go` 硬编码 + `main.go` 硬调用重构成**目录扫描声明式** —— `mcp/*.yaml` + driver 抽象（inproc / stdio 两种 transport）+ `enabled_if` 表达式（`always` / `env:VAR` / `env:VAR=v`）
+- **运行时行为承诺 0 变化**：evals 6/6 必须保持绿；tool 名字前缀 `mcp.*` / `fs.*` 不变；agents/*.yaml 不改
+- **顺带解决 STATUS 已知问题 #1（list_dir 空）+ #2（fs MCP 无 npx）** —— yaml `default_root` + `enabled_if` 语义清晰化
+- **明确决定 fail-fast**：enabled=true 但启动失败 = pod crashloop（不再 warn-and-continue），是一处**行为语义变化**待用户确认
+- Spec 里剩 1 个 Open Question 待敲定：`stdio.init_timeout` 默认 30s 沿用 vs 全项目统一（倾向沿用）
+- **代码未动**，spec review 通过后再写 ADR-005 + 开工实现
+
+**Dependabot 报的 6 个 CVE**（Public 启用后首扫）：2 high (vite Windows path bypass / buger/jsonparser DoS) + 4 moderate (vite × 2 / esbuild / protobuf)。**全部 dev-only 或 transitive**，runtime image 是 distroless static，不包含 npm 生态，实际暴露面远低于标注严重程度。**已延后处理**：Phase 1 完成后单独 fix 分支清一批。
+
+**待用户 review 后续动作**：
+1. Phase 1 spec review → 用户敲定 Open Question + 确认 fail-fast → 我写 ADR-005 → 实现代码
+2. Dependabot 6 CVE 清理（可延后到 Phase 1 完成后）
+3. `.github/workflows/*.yml` 里几个 action version 升级消 deprecation warning（低优先，后续 PR 顺手做）
 
 ## 2026-07-16 上午 方向转换
 
@@ -21,25 +49,25 @@
 - 学习优先，产品可以"能用但不完善"
 
 **Phase 划分**（详见 vision spec）：
-1. **Phase 0**（本次会话，进行中）：元流程 setup（spec / ADR 模板 + 回溯 ADR + PR 模板 + branch protection + vision spec）
-2. Phase 1：MCP 声明式加载（yaml + driver 层）
+1. ✅ **Phase 0**（07-16 完成）：元流程 setup（spec / ADR 模板 + 回溯 ADR + PR 模板 + branch protection + vision spec）—— **PR #5 合入 main `6a52da5`**
+2. 🟡 **Phase 1**（07-16 起手，spec 待 review）：MCP 声明式加载（yaml + driver 层）
 3. Phase 2：Registry 可变 + Host 原子 swap（`Unregister` / `atomic.Pointer`）
 4. Phase 3：REST API（`/api/agents` `/api/mcp` `/api/skills`）
 5. Phase 4：配置 UI（shadcn/ui + Tailwind）
 6. Phase 5：OTel trace + Langfuse
 
-**Phase 0 产出**（feature branch `docs/init-engineering-flow`）：
+**Phase 0 产出**（squash-merged 到 main，commit `6a52da5`）：
 - `docs/specs/_template.md` + `docs/adr/_template.md`
 - `docs/adr/001-monorepo-single-binary.md`
 - `docs/adr/002-eino-as-orchestrator.md`
 - `docs/adr/003-distroless-runtime.md`
-- `docs/adr/004-branch-protection-on-main.md`（决策：仓库从 Private 转 Public 换取免费 branch protection）
+- `docs/adr/004-branch-protection-on-main.md`（仓库 Private → Public 决策 + protection 配置细节）
 - `docs/specs/workbuddy-vision.md`
 - `.github/pull_request_template.md`
-- `main` 分支 branch protection（**待做**：仓库转 Public → GitHub Settings 配 required PR + required checks `build-and-test` / `lint`；步骤见 ADR-004 Compliance 节）
-- STATUS.md + CLAUDE.md 同步
+- **`main` 分支 branch protection 生效**（配置详见 ADR-004；实测直推被拒）
+- STATUS.md + CLAUDE.md 同步（硬规矩生效）
 
-**已知问题 #1 / #2 归属调整**：
+**已知问题 #1 / #2 归属调整**（保持不变）：
 - #1（list_dir 返回 [] 因为容器无 WORKDIR）→ Phase 1 MCP 声明式加载时顺带修（yaml 里配 `default_root`），无需单独 Dockerfile 改动
 - #2（filesystem MCP 在容器没起因为没 npx）→ Phase 1 里改为**声明式 enabled_if gate**；本地开发 `ENABLE_FS_MCP=1` 自动 enable，容器无此 env 自动 disable，语义清晰不再"warn-and-continue"
 
@@ -304,6 +332,8 @@ $env:ARK_MODEL_ID="ep-20260609204306-xj4xt"
 | 2026-07-16 | GH Actions secret 走 `gh secret set --body '值'` 明文传参，**不用** `printf \| gh --body -` stdin 管道 | 第一次用 stdin 管道写入后 CI 侧 401 `The API key format is incorrect`，本地同 key 正常，暗示 stdin 通道混入了额外字符。明文参数最不容易翻车 |
 | 2026-07-16 | `evals.yml` 用 `2>&1 \| tee` + `$PIPESTATUS[0]` 而不是裸 `\| tee` | `cmd/evals` 用 `log.Printf` → stderr，裸 tee 只抓 stdout → artifact 空；tee 恒 0 → workflow 假绿。这个坑跟 `ci.yml` smoke test 那步同源，写第二次是抄错了模式 |
 | 2026-07-16 | 仓库从 Private 转 Public 以启用 `main` 分支 branch protection | GitHub Free 私有仓库不支持 branch protection（`gh api` 实测 403 Upgrade to Pro）；升 Pro $4/mo 或走软性 hook 都 dominated 于"转 Public + 免费 protection"。代码本身是学习成果，公开顺带丰富贡献日历。详见 [ADR-004](docs/adr/004-branch-protection-on-main.md) |
+| 2026-07-16 | branch protection `contexts` 用 job display name（`build + vet` / `golangci-lint`）不是 job key | GitHub 匹配 required check 用的是 `jobs.<x>.name:` 值。初版用 job key `build-and-test` / `lint` 时 `app_id: null`，说明没匹配上，protection 形同虚设。修正后 `app_id: 15368` 出现，adversarial test 才真通过。已存 memory `github-required-check-name-uses-display-name` |
+| 2026-07-16 | 项目走完整 spec → ADR → PR → protection 流程首用 = PR #5 | Phase 0 元流程 setup 自己走一遍新流程验证闭环。squash-merge 保持 main history 一 PR 一 commit；`--delete-branch` 自动清理；`git remote prune` 后 local main 干净 |
 
 ---
 
@@ -311,7 +341,7 @@ $env:ARK_MODEL_ID="ep-20260609204306-xj4xt"
 
 - [x] ~~项目是否建 Git 仓库~~ → 已建（07-10）
 - [x] ~~上 k8s~~ → 完成（07-11）
-- [x] ~~推 GitHub 远端仓库~~ → 完成（07-11 Private）
+- [x] ~~推 GitHub 远端仓库~~ → 完成（07-11 Private → 07-16 转 Public）
 - [x] ~~加 `CLAUDE.md` / 工程化 roadmap~~ → 完成（07-14）
 - [x] ~~路由回归 eval 骨架~~ → 完成（07-14，红色 case 待实测）
 - [x] ~~`golangci-lint` / `lefthook` 配置~~ → 配置起草完成（07-14），本机工具链未装
@@ -319,7 +349,11 @@ $env:ARK_MODEL_ID="ep-20260609204306-xj4xt"
 - [x] ~~首次 CI run 后按 report 调 `.golangci.yml`~~ → 完成（07-15 傍晚，run `29411625130` 全绿）
 - [x] ~~GitHub Secrets 加 `ARK_API_KEY` / `ARK_MODEL_ID`，手动触发 evals workflow~~ → 完成（07-16 凌晨，run `29466566000` 6/6 全绿）
 - [x] ~~`go run ./cmd/evals` 实测（或走 CI），`research-goroutine` 转绿~~ → 完成（意外转绿，n=1 baseline 不代表长期）
-- [ ] 装 `golangci-lint` + `lefthook`，跑第一次 lint 并按 report 调配置
-- [ ] Dockerfile 加 WORKDIR + 样例文件（fix list_dir）
-- [ ] 决定 filesystem MCP 在容器里怎么处理（sidecar / 放弃）
-- [ ] 老 API Key 排查阶段建的临时 key 是否 revoke
+- [x] ~~Phase 0 元流程 setup + branch protection~~ → 完成（07-16 傍晚，PR #5 合入 main `6a52da5`）
+- [ ] **Phase 1 spec review**（用户 review `docs/specs/phase-1-mcp-declarative-loading.md`；review 通过后写 ADR-005 + 实现）
+- [ ] ~~Dockerfile 加 WORKDIR + 样例文件（fix list_dir）~~ → 归到 Phase 1 里 `default_root` yaml 字段解决
+- [ ] ~~决定 filesystem MCP 在容器里怎么处理（sidecar / 放弃）~~ → 归到 Phase 1 `enabled_if` gate 声明式表达
+- [ ] Dependabot 6 CVE 清理（Phase 1 完成后单独 fix 分支；全部 dev-only 或 transitive，不影响 runtime）
+- [ ] 装 `golangci-lint` + `lefthook`，跑第一次 lint 并按 report 调配置（CI 兜底后 nice-to-have）
+- [ ] `.github/workflows/*.yml` 里几个 action version 升级消 deprecation warning（低优先，后续 PR 顺手）
+- [ ] 老 API Key 排查阶段建的临时 key 是否 revoke（转 Public 后建议做，多一层保险）
