@@ -3,9 +3,33 @@
 > 项目**当前状态 + 决策日志**，进 git、跟代码走。
 > 每次收尾在此更新；跨会话的元知识（工具坑、账号背景等）留在 `~/.claude/memory/`。
 
-**最后更新：2026-07-15（傍晚）**（GitHub Actions CI 转绿：lint 修完 3 条 findings + 2 条豁免）
+**最后更新：2026-07-16（凌晨）**（evals workflow 首跑通，6/6 baseline 全绿；`research-goroutine` 意外转绿）
 
 > 📍 工程化改进路线：[`docs/roadmap-ai-engineering.md`](docs/roadmap-ai-engineering.md)（AI 辅助开发的业界实践 + 本项目改进清单，2026-07-14 起草）
+
+## 2026-07-16 凌晨 变更
+
+**GitHub Secrets 加成 + evals workflow 首跑通**（1 个 commit：`e66a375`）：
+
+- `gh secret set ARK_API_KEY / ARK_MODEL_ID` 已配（用 `--body '值'` 直传，**不**走 stdin —— 第一次用 `printf | gh --body -` 写入时 CI 侧 401 `The API key format is incorrect`，本地同 key 正常，改成明文参数就干净了）
+- 手动触发 `evals.yml` × 3：
+  - 首跑：secret 传递错，6/6 全 401
+  - 二跑：secret 修好，**6/6 全 PASS**（包括预期红的 `research-goroutine`）
+  - 三跑：`e66a375` 修 workflow bug 后 rerun，artifact 从 0 bytes → 1133 bytes，`cmd/evals exit=0` 打印出来
+- **`research-goroutine` 意外转绿** —— STATUS #3 记的观察 baseline 是 n=1 采样，Ark 模型不同调用之间有波动；当前 6/6 是绿的，改 host prompt 的动机被打掉。#3 归档为"待长期观察，非阻塞"。
+- `e66a375 fix(ci): evals workflow captures stderr and honours exit code` —— 修两个坑：
+  1. `cmd/evals` 用 `log.Printf` 走 stderr，裸 `| tee` 只抓 stdout → artifact 0 bytes。加 `2>&1`。
+  2. bash pipeline 默认取最后一段（`tee` 恒 0）→ workflow 永绿。用 `set +e` + `$PIPESTATUS[0]` 显式取 `cmd/evals` 真实退出码（跟 `ci.yml` smoke test 同一模式）。
+
+**Runtime 未变**（只改 CI workflow + 配 GH secret），无需重部署。
+
+**尚未做（下一次会话优先级）：**
+1. **已知问题 #3 归档为"待长期观察"** —— 当前 baseline 全绿，改 prompt 的动机没了。定期 rerun 一次 evals 观察 `research-goroutine` 是否会因 Ark 侧波动重新翻红。
+2. Dockerfile 加 `WORKDIR /data` + 样例文件（修已知问题 #1，list_dir 返回 `[]`）
+3. 决定 filesystem MCP 在容器里怎么处理（sidecar / 放弃，即已知问题 #2）
+4. GH Actions 各 action 升级到 Node 24 兼容版本，消 deprecation warning
+5. 本机装 `golangci-lint` + `lefthook`（CI 兜底后 nice-to-have）
+6. Ark 控制台老 API Key 排查阶段的临时 key 是否 revoke
 
 ## 2026-07-15 傍晚 变更
 
@@ -125,6 +149,8 @@ tools: optional tool "fs.read_file" not registered (external MCP disabled?), ski
 ### 3. host 路由把第三条给了 ops 而不是 research
 本地也有此风险 —— 是 host prompt / 工具描述的语义问题，跟部署无关，独立调优。
 
+**2026-07-16 更新**：evals workflow 首跑（run `29466374857`）`research-goroutine` **意外转绿**（`got-agent: research_agent`）。原始观察 baseline 是 n=1 采样，Ark 模型不同调用之间有波动。归档为"待长期观察，非阻塞"—— 定期 rerun 一次 evals 看它会不会重新翻红，红了再调 prompt。
+
 ### 4. LLM 跳过 `mcp.echo`
 "echo hello agents" 太简单，LLM 直接复述、没触发工具调用。要强制走工具需要在 prompt 里更明示。
 
@@ -239,6 +265,8 @@ $env:ARK_MODEL_ID="ep-20260609204306-xj4xt"
 | 2026-07-15 | GitHub Actions CI 拆两个 workflow：`ci.yml` 自动跑 build/vet/lint，`evals.yml` 手动触发 | evals 需要真 Ark key + 花钱，分离触发方式能让 CI 稳定绿而不受 endpoint / 网络影响；等观察一段时间再考虑要不要把 evals 挂到 PR |
 | 2026-07-15 | `.golangci.yml` 加两条精准豁免（server exitAfterDefer / filesystem G706）而不是改代码结构 | server bootstrap 抽 `run() error` 只为过 lint 是纯 ceremony，`cancel()` 在失败路径漏跑无害；filesystem taint 源是本地 env 不是网络输入，gosec 判定过严。豁免带 inline 注释解释 tradeoff |
 | 2026-07-15 | `golangci-lint-action` pin 到 `version: v2.12`（不是 `v2.0`） | action 用 `vX.Y` 系列 pin 会拉该系列最老 patch（v2.0.2 = Go 1.24 编），拒绝加载 `go: "1.26"` 的 config。升级到 v2.12（2026-05 release，Go 1.26 编）才能真正跑规则 |
+| 2026-07-16 | GH Actions secret 走 `gh secret set --body '值'` 明文传参，**不用** `printf \| gh --body -` stdin 管道 | 第一次用 stdin 管道写入后 CI 侧 401 `The API key format is incorrect`，本地同 key 正常，暗示 stdin 通道混入了额外字符。明文参数最不容易翻车 |
+| 2026-07-16 | `evals.yml` 用 `2>&1 \| tee` + `$PIPESTATUS[0]` 而不是裸 `\| tee` | `cmd/evals` 用 `log.Printf` → stderr，裸 tee 只抓 stdout → artifact 空；tee 恒 0 → workflow 假绿。这个坑跟 `ci.yml` smoke test 那步同源，写第二次是抄错了模式 |
 
 ---
 
@@ -252,9 +280,9 @@ $env:ARK_MODEL_ID="ep-20260609204306-xj4xt"
 - [x] ~~`golangci-lint` / `lefthook` 配置~~ → 配置起草完成（07-14），本机工具链未装
 - [x] ~~GitHub Actions CI~~ → build/vet/lint 自动 + evals 手动（07-15 下午）
 - [x] ~~首次 CI run 后按 report 调 `.golangci.yml`~~ → 完成（07-15 傍晚，run `29411625130` 全绿）
+- [x] ~~GitHub Secrets 加 `ARK_API_KEY` / `ARK_MODEL_ID`，手动触发 evals workflow~~ → 完成（07-16 凌晨，run `29466566000` 6/6 全绿）
+- [x] ~~`go run ./cmd/evals` 实测（或走 CI），`research-goroutine` 转绿~~ → 完成（意外转绿，n=1 baseline 不代表长期）
 - [ ] 装 `golangci-lint` + `lefthook`，跑第一次 lint 并按 report 调配置
-- [ ] GitHub Secrets 加 `ARK_API_KEY` / `ARK_MODEL_ID`，手动触发 evals workflow
-- [ ] `go run ./cmd/evals` 实测（或走 CI），`research-goroutine` 转绿
 - [ ] Dockerfile 加 WORKDIR + 样例文件（fix list_dir）
 - [ ] 决定 filesystem MCP 在容器里怎么处理（sidecar / 放弃）
 - [ ] 老 API Key 排查阶段建的临时 key 是否 revoke
