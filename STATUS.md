@@ -3,9 +3,45 @@
 > 项目**当前状态 + 决策日志**，进 git、跟代码走。
 > 每次收尾在此更新；跨会话的元知识（工具坑、账号背景等）留在 `~/.claude/memory/`。
 
-**最后更新：2026-07-16（凌晨）**（evals workflow 首跑通，6/6 baseline 全绿；`research-goroutine` 意外转绿）
+**最后更新：2026-07-16（上午）**（**方向转换**：demo → workbuddy 演化 + 工业级流程 setup）
 
-> 📍 工程化改进路线：[`docs/roadmap-ai-engineering.md`](docs/roadmap-ai-engineering.md)（AI 辅助开发的业界实践 + 本项目改进清单，2026-07-14 起草）
+> 📍 **workbuddy 转型 vision**：[`docs/specs/workbuddy-vision.md`](docs/specs/workbuddy-vision.md)（本项目从 demo 演化为可配置多 agent 产品的 MVP 边界；下一阶段主线）
+> 📍 工程化改进路线：[`docs/roadmap-ai-engineering.md`](docs/roadmap-ai-engineering.md)（AI 辅助开发的业界实践 + 本项目改进清单，2026-07-14 起草，多数已落地）
+> 📍 架构决策记录：[`docs/adr/`](docs/adr/)（每决策一份，从 001 单二进制 / 002 Eino / 003 distroless 起）
+
+## 2026-07-16 上午 方向转换
+
+**旧目标（demo 打磨）已收尾** —— CI / evals / lint / STATUS 同步基线全部到位；`research-goroutine` 意外转绿（详见 2026-07-16 凌晨节 + memory `llm-eval-needs-multiple-samples`）。
+
+**新目标（workbuddy 产品 + 工业级实践载体）** —— 项目**从 demo 演化为 workbuddy 类产品**：页面上配置 subagent / skill / MCP，并且**用它作为工业级 AI 开发实践的载体**：
+
+- 每个特性走 **spec → ADR → feature branch → PR → adversarial code review → eval → 合入** 完整流程
+- `main` 分支 branch protection，不允许直推
+- 前端 UI 在 Phase 4 一次性升级 shadcn/ui + Tailwind
+- 学习优先，产品可以"能用但不完善"
+
+**Phase 划分**（详见 vision spec）：
+1. **Phase 0**（本次会话，进行中）：元流程 setup（spec / ADR 模板 + 回溯 ADR + PR 模板 + branch protection + vision spec）
+2. Phase 1：MCP 声明式加载（yaml + driver 层）
+3. Phase 2：Registry 可变 + Host 原子 swap（`Unregister` / `atomic.Pointer`）
+4. Phase 3：REST API（`/api/agents` `/api/mcp` `/api/skills`）
+5. Phase 4：配置 UI（shadcn/ui + Tailwind）
+6. Phase 5：OTel trace + Langfuse
+
+**Phase 0 产出**（feature branch `docs/init-engineering-flow`）：
+- `docs/specs/_template.md` + `docs/adr/_template.md`
+- `docs/adr/001-monorepo-single-binary.md`
+- `docs/adr/002-eino-as-orchestrator.md`
+- `docs/adr/003-distroless-runtime.md`
+- `docs/adr/004-branch-protection-on-main.md`（决策：仓库从 Private 转 Public 换取免费 branch protection）
+- `docs/specs/workbuddy-vision.md`
+- `.github/pull_request_template.md`
+- `main` 分支 branch protection（**待做**：仓库转 Public → GitHub Settings 配 required PR + required checks `build-and-test` / `lint`；步骤见 ADR-004 Compliance 节）
+- STATUS.md + CLAUDE.md 同步
+
+**已知问题 #1 / #2 归属调整**：
+- #1（list_dir 返回 [] 因为容器无 WORKDIR）→ Phase 1 MCP 声明式加载时顺带修（yaml 里配 `default_root`），无需单独 Dockerfile 改动
+- #2（filesystem MCP 在容器没起因为没 npx）→ Phase 1 里改为**声明式 enabled_if gate**；本地开发 `ENABLE_FS_MCP=1` 自动 enable，容器无此 env 自动 disable，语义清晰不再"warn-and-continue"
 
 ## 2026-07-16 凌晨 变更
 
@@ -23,11 +59,11 @@
 
 **Runtime 未变**（只改 CI workflow + 配 GH secret），无需重部署。
 
-**尚未做（下一次会话优先级）：**
-1. **已知问题 #3 归档为"待长期观察"** —— 当前 baseline 全绿，改 prompt 的动机没了。定期 rerun 一次 evals 观察 `research-goroutine` 是否会因 Ark 侧波动重新翻红。
-2. Dockerfile 加 `WORKDIR /data` + 样例文件（修已知问题 #1，list_dir 返回 `[]`）
-3. 决定 filesystem MCP 在容器里怎么处理（sidecar / 放弃，即已知问题 #2）
-4. GH Actions 各 action 升级到 Node 24 兼容版本，消 deprecation warning
+**尚未做（下一次会话优先级 —— 07-16 上午方向转换后已废止，重排见 07-16 上午节 Phase 1+）：**
+1. ~~已知问题 #3 归档为"待长期观察"~~ ✅ 已归档，见 07-16 上午方向转换
+2. ~~Dockerfile 加 `WORKDIR /data` + 样例文件~~ → 归到 Phase 1 里 MCP yaml `default_root` 声明式解决
+3. ~~决定 filesystem MCP 在容器里怎么处理~~ → 归到 Phase 1 `enabled_if` gate
+4. GH Actions 各 action 升级到 Node 24 兼容版本，消 deprecation warning（低优先，后续 PR 顺手做）
 5. 本机装 `golangci-lint` + `lefthook`（CI 兜底后 nice-to-have）
 6. Ark 控制台老 API Key 排查阶段的临时 key 是否 revoke
 
@@ -267,6 +303,7 @@ $env:ARK_MODEL_ID="ep-20260609204306-xj4xt"
 | 2026-07-15 | `golangci-lint-action` pin 到 `version: v2.12`（不是 `v2.0`） | action 用 `vX.Y` 系列 pin 会拉该系列最老 patch（v2.0.2 = Go 1.24 编），拒绝加载 `go: "1.26"` 的 config。升级到 v2.12（2026-05 release，Go 1.26 编）才能真正跑规则 |
 | 2026-07-16 | GH Actions secret 走 `gh secret set --body '值'` 明文传参，**不用** `printf \| gh --body -` stdin 管道 | 第一次用 stdin 管道写入后 CI 侧 401 `The API key format is incorrect`，本地同 key 正常，暗示 stdin 通道混入了额外字符。明文参数最不容易翻车 |
 | 2026-07-16 | `evals.yml` 用 `2>&1 \| tee` + `$PIPESTATUS[0]` 而不是裸 `\| tee` | `cmd/evals` 用 `log.Printf` → stderr，裸 tee 只抓 stdout → artifact 空；tee 恒 0 → workflow 假绿。这个坑跟 `ci.yml` smoke test 那步同源，写第二次是抄错了模式 |
+| 2026-07-16 | 仓库从 Private 转 Public 以启用 `main` 分支 branch protection | GitHub Free 私有仓库不支持 branch protection（`gh api` 实测 403 Upgrade to Pro）；升 Pro $4/mo 或走软性 hook 都 dominated 于"转 Public + 免费 protection"。代码本身是学习成果，公开顺带丰富贡献日历。详见 [ADR-004](docs/adr/004-branch-protection-on-main.md) |
 
 ---
 
