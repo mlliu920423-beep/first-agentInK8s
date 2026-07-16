@@ -36,7 +36,7 @@
      - Require approvals: **0**（单人项目，自审即可 —— 通过 PR 描述 + `.github/pull_request_template.md` 自我 checklist 保证质量）
      - Dismiss stale pull request approvals when new commits are pushed: **on**
    - Require status checks to pass before merging
-     - **必须过的 checks**：`build-and-test` + `lint`（来自 `.github/workflows/ci.yml`）
+     - **必须过的 checks**：`build + vet` + `golangci-lint`（来自 `.github/workflows/ci.yml` 的 job `name:` 而非 job id —— GitHub 匹配 required check 用 display name，不是 workflow yaml 里的 job key）
      - `evals` **不设 required**（手动 dispatch，且 Ark 调用会花钱，改路由 / prompt 的 PR 在 PR 描述里贴本地 eval 结果即可）
      - Require branches to be up to date before merging: **on**
    - Do not allow bypassing the above settings（含 admin）: **on**（对自己也生效，防"关键时刻手滑"）
