@@ -33,9 +33,10 @@
 - `docs/adr/001-monorepo-single-binary.md`
 - `docs/adr/002-eino-as-orchestrator.md`
 - `docs/adr/003-distroless-runtime.md`
+- `docs/adr/004-branch-protection-on-main.md`（决策：仓库从 Private 转 Public 换取免费 branch protection）
 - `docs/specs/workbuddy-vision.md`
 - `.github/pull_request_template.md`
-- `main` 分支 branch protection（GitHub Settings 配）
+- `main` 分支 branch protection（**待做**：仓库转 Public → GitHub Settings 配 required PR + required checks `build-and-test` / `lint`；步骤见 ADR-004 Compliance 节）
 - STATUS.md + CLAUDE.md 同步
 
 **已知问题 #1 / #2 归属调整**：
@@ -302,6 +303,7 @@ $env:ARK_MODEL_ID="ep-20260609204306-xj4xt"
 | 2026-07-15 | `golangci-lint-action` pin 到 `version: v2.12`（不是 `v2.0`） | action 用 `vX.Y` 系列 pin 会拉该系列最老 patch（v2.0.2 = Go 1.24 编），拒绝加载 `go: "1.26"` 的 config。升级到 v2.12（2026-05 release，Go 1.26 编）才能真正跑规则 |
 | 2026-07-16 | GH Actions secret 走 `gh secret set --body '值'` 明文传参，**不用** `printf \| gh --body -` stdin 管道 | 第一次用 stdin 管道写入后 CI 侧 401 `The API key format is incorrect`，本地同 key 正常，暗示 stdin 通道混入了额外字符。明文参数最不容易翻车 |
 | 2026-07-16 | `evals.yml` 用 `2>&1 \| tee` + `$PIPESTATUS[0]` 而不是裸 `\| tee` | `cmd/evals` 用 `log.Printf` → stderr，裸 tee 只抓 stdout → artifact 空；tee 恒 0 → workflow 假绿。这个坑跟 `ci.yml` smoke test 那步同源，写第二次是抄错了模式 |
+| 2026-07-16 | 仓库从 Private 转 Public 以启用 `main` 分支 branch protection | GitHub Free 私有仓库不支持 branch protection（`gh api` 实测 403 Upgrade to Pro）；升 Pro $4/mo 或走软性 hook 都 dominated 于"转 Public + 免费 protection"。代码本身是学习成果，公开顺带丰富贡献日历。详见 [ADR-004](docs/adr/004-branch-protection-on-main.md) |
 
 ---
 

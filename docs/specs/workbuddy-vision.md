@@ -2,7 +2,7 @@
 
 > **Status**: Approved
 > **Owner**: @Bigmay
-> **Related ADR(s)**: [ADR-001](../adr/001-monorepo-single-binary.md), [ADR-002](../adr/002-eino-as-orchestrator.md), [ADR-003](../adr/003-distroless-runtime.md); 后续 ADR 004–010 待补
+> **Related ADR(s)**: [ADR-001](../adr/001-monorepo-single-binary.md), [ADR-002](../adr/002-eino-as-orchestrator.md), [ADR-003](../adr/003-distroless-runtime.md), [ADR-004](../adr/004-branch-protection-on-main.md); 后续 ADR 005–010 待补
 > **Related feature branch / PR**: `docs/init-engineering-flow`, PR TBD
 > **Last updated**: 2026-07-16
 

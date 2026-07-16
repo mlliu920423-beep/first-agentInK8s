@@ -185,7 +185,7 @@ gh run watch  # 看最新一次 run
 1. **每次会话开头必读**：`STATUS.md`（当前状态）+ `docs/specs/` 目录列表（尤其 `workbuddy-vision.md`）+ `ARCHITECTURE.md`（架构原理）。不要跳过。
 2. **【硬规矩】大改动必须先写 spec**：在 `docs/specs/<feature-name>.md`（用 `docs/specs/_template.md` 模板）描述 Context / Goals / Options / Decision / Acceptance Criteria / Risks，用户 review 通过后再动代码。**"trivial 改动"** 定义：改一个 typo / 一个日志字符串 / 一个 CI 步骤内 flag。**其他所有的都是非 trivial**。
 3. **【硬规矩】架构级决策必须写 ADR**：`docs/adr/00X-<slug>.md`（用 `docs/adr/_template.md` 模板）。ADR 触发条件：技术选型 / 数据模型 / 并发模型 / 依赖引入 / breaking behavior change。
-4. **【硬规矩】不直推 `main`**：每个特性一个 feature branch（命名 `feat/<slug>` / `fix/<slug>` / `docs/<slug>`），走 PR 流程。PR 描述用 `.github/pull_request_template.md` 模板。**GitHub `main` 分支已设 branch protection**（见 [ADR-004+ 后续补]），直推会被拒。
+4. **【硬规矩】不直推 `main`**：每个特性一个 feature branch（命名 `feat/<slug>` / `fix/<slug>` / `docs/<slug>`），走 PR 流程。PR 描述用 `.github/pull_request_template.md` 模板。**GitHub `main` 分支已设 branch protection**（见 [`docs/adr/004-branch-protection-on-main.md`](docs/adr/004-branch-protection-on-main.md)：仓库为此从 Private 转 Public），直推会被拒。
 5. **改 host prompt / specialist description 后必须跑 `evals/routing.yaml`**，别只靠"手点浏览器验证"。CI 已把 evals 作为可选门槛，改动路由 / prompt 相关代码时 PR 描述里明确本地/CI evals 结果。
 6. **加事件类型时改两处**：`internal/httpapi/events.go` 和 `web/src/sseClient.ts`（+ `App.tsx` 里 `applyEvent` 的 switch）。
 7. **不要**：
