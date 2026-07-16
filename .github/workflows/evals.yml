@@ -69,7 +69,18 @@ jobs:
             echo "::error::ARK_API_KEY / ARK_MODEL_ID secret 未设置。在仓库 Settings → Secrets → Actions 里加。"
             exit 1
           fi
-          go run ./cmd/evals -file '${{ inputs.file }}' | tee evals-report.txt
+          # 两个坑一起修：
+          #   1. cmd/evals 用 log.Printf → 默认 stderr。裸 `| tee` 只抓 stdout，
+          #      导致 evals-report.txt 一直是 0 字节。用 `2>&1` 把 stderr 合并到 stdout。
+          #   2. bash pipeline 默认取最后一段（tee）的退出码，tee 恒 0 → workflow
+          #      永远 success，即便 cmd/evals exit 1（有 case 红）。用 $PIPESTATUS[0]
+          #      显式取前段真实退出码（同 ci.yml smoke test 那步的模式）。
+          set +e
+          go run ./cmd/evals -file '${{ inputs.file }}' 2>&1 | tee evals-report.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "cmd/evals exit=$rc"
+          exit $rc
 
       - name: Upload evals report
         if: always()
