@@ -2,6 +2,7 @@
 
 > 项目的 AI 会话上下文：任何 AI（Claude Code / Cursor / Codex / ChatGPT）打开这个项目都读这份。
 > 目标是**把踩过的坑固化下来**，别让下一次会话再撞一遍。
+> **2026-07-16 起项目转向 workbuddy 演化 + 工业级实践载体** —— 每个特性走 spec → ADR → feature branch → PR → eval → 合入 全流程。**新 AI 会话必读 `docs/specs/workbuddy-vision.md`**。
 > 深度设计原理看 [`ARCHITECTURE.md`](ARCHITECTURE.md)；当前状态和已知问题看 [`STATUS.md`](STATUS.md)；工程化改进路线看 [`docs/roadmap-ai-engineering.md`](docs/roadmap-ai-engineering.md)。
 
 ---
@@ -49,7 +50,8 @@ agents/*.yaml        Specialist 声明式配置（每个 yaml 一个 agent）
 evals/               路由回归 case 集（routing.yaml + README.md）
 web/                 React + Vite 前端源码
 k8s/                 deployment / service / secret 模板
-docs/                路线图、ADR（未来）、spec（未来）
+docs/                路线图、ADR（`docs/adr/`）、spec（`docs/specs/`）
+                     两份 _template.md 是模板，写新 spec / ADR 时从模板 copy
 .github/workflows/   CI（ci.yml 自动跑 build/vet/lint；evals.yml 手动跑）
 Dockerfile           三阶段：node → go → distroless
 ```
@@ -178,16 +180,21 @@ gh run watch  # 看最新一次 run
 
 ## AI 助手做事的偏好
 
-1. **改代码前先看 `STATUS.md` 和 `ARCHITECTURE.md`**。ARCHITECTURE 里已经把每个模块"为什么这么设计"写清楚了，别推翻已有约定。
-2. **大改动先写 spec**：在 `docs/specs/<feature-name>.md` 描述现状 / 目标 / 方案 A/B/C / 选定方案 / 验收标准，再动代码。
-3. **架构级决策记录在 `docs/adr/`**（还没建目录，第一次写就建）。ADR = Architecture Decision Record，一决策一文件。
-4. **改 host prompt / specialist description 后必须跑 `evals/routing.yaml`**，别只靠"手点浏览器验证"。
-5. **加事件类型时改两处**：`internal/httpapi/events.go` 和 `web/src/sseClient.ts`（+ `App.tsx` 里 `applyEvent` 的 switch）。
-6. **不要**：
+> **2026-07-16 起硬规矩**：项目从 demo 转向 workbuddy 演化 + 工业级实践载体（见 `docs/specs/workbuddy-vision.md`）。以下条目从"建议"提升为"规矩"，除非 spec 明说例外，否则**每次开工都必须走这个流程**。
+
+1. **每次会话开头必读**：`STATUS.md`（当前状态）+ `docs/specs/` 目录列表（尤其 `workbuddy-vision.md`）+ `ARCHITECTURE.md`（架构原理）。不要跳过。
+2. **【硬规矩】大改动必须先写 spec**：在 `docs/specs/<feature-name>.md`（用 `docs/specs/_template.md` 模板）描述 Context / Goals / Options / Decision / Acceptance Criteria / Risks，用户 review 通过后再动代码。**"trivial 改动"** 定义：改一个 typo / 一个日志字符串 / 一个 CI 步骤内 flag。**其他所有的都是非 trivial**。
+3. **【硬规矩】架构级决策必须写 ADR**：`docs/adr/00X-<slug>.md`（用 `docs/adr/_template.md` 模板）。ADR 触发条件：技术选型 / 数据模型 / 并发模型 / 依赖引入 / breaking behavior change。
+4. **【硬规矩】不直推 `main`**：每个特性一个 feature branch（命名 `feat/<slug>` / `fix/<slug>` / `docs/<slug>`），走 PR 流程。PR 描述用 `.github/pull_request_template.md` 模板。**GitHub `main` 分支已设 branch protection**（见 [ADR-004+ 后续补]），直推会被拒。
+5. **改 host prompt / specialist description 后必须跑 `evals/routing.yaml`**，别只靠"手点浏览器验证"。CI 已把 evals 作为可选门槛，改动路由 / prompt 相关代码时 PR 描述里明确本地/CI evals 结果。
+6. **加事件类型时改两处**：`internal/httpapi/events.go` 和 `web/src/sseClient.ts`（+ `App.tsx` 里 `applyEvent` 的 switch）。
+7. **不要**：
    - 把 `mcp.` 前缀里的下划线换成横线之类的"美化"（`mcp.list_dir` 是当前 in-proc MCP server 定义的名字）
-   - 把 Registry 从"启动时静态注册"改成"运行时动态注册"（除非有明确需求，且改 `MustResolve` 的语义）
+   - ~~把 Registry 从"启动时静态注册"改成"运行时动态注册"~~ —— 07-16 起 workbuddy vision 明确要动态化，见 Phase 2 spec
    - 在 Go 代码里硬编码 API key / endpoint id（只走 env）
-7. **代码风格**：跟着 `gofmt` + `go vet`；`golangci-lint` 已启用（配置在 `.golangci.yml`），提交前跑一次。
+   - 在 spec / ADR 还没写就动代码 —— 除非改动确实 trivial 且能一句话解释
+8. **代码风格**：跟着 `gofmt` + `go vet`；`golangci-lint` 已启用（配置在 `.golangci.yml`），提交前跑一次。
+9. **踩到新坑及时进 memory**：任何"下次会话会重踩"的坑写进 `~/.claude/projects/D--Bigmay-Projects-first-agentInK8s/memory/` 里，一坑一文件，并在 `MEMORY.md` 加一行指针。
 
 ---
 
