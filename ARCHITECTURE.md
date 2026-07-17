@@ -97,7 +97,7 @@ flowchart TB
   HTTP --> SSE
   HTTP --> Static
   SSE -.Current lock-free.-> Sup
-  Sup -.atomic.Pointer.-> HostMA
+  Sup -.atomic Pointer.-> HostMA
   HostMA -.选一个.-> Spec1
   HostMA -.选一个.-> Spec2
   HostMA -.选一个.-> Spec3
