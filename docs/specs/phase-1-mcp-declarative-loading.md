@@ -1,10 +1,10 @@
 # Phase 1 Spec: MCP 声明式加载
 
-> **Status**: Draft
+> **Status**: Accepted
 > **Owner**: @Bigmay
-> **Related ADR(s)**: ADR-005（待写：MCP driver 抽象 + 声明式 loader）
+> **Related ADR(s)**: ADR-005（MCP driver 抽象 + 声明式 loader）
 > **Related feature branch / PR**: `feat/mcp-declarative-loading`, PR TBD
-> **Last updated**: 2026-07-16
+> **Last updated**: 2026-07-17（用户 review 通过，转 Accepted；Open Questions 全 close）
 
 ## Context
 
@@ -362,8 +362,8 @@ COPY --from=go-builder /app/mcp /mcp     # ← 新增
 - [x] **inproc 的 `provider` 字段应叫什么**？考虑过 `provider` / `impl` / `builder`。**决定**：`provider`，因为语义是"哪份内建实现"，跟数据源 provider 类比自然
 - [x] **`enabled_if` 拼错要 fail-fast 还是 warn-and-skip**？→ **fail-fast**。理由：typo 让 MCP 静默跳过更难 debug，不如 pod 起不来立刻看错误
 - [x] **`default_root` 只放 inproc 还是所有 driver 共用**？→ **只 inproc**。stdio 有 `args` / `env` 表达路径参数，通用字段会污染 schema
-- [ ] **stdio driver `init_timeout` 默认是 30s（继承当前 filesystem）还是全项目统一到某值**？倾向 30s 沿用，除非有具体反对
-- [ ] **`ENABLE_FS_MCP=1` env 未来是否要弃用**？倾向 Phase 4 前端有 `enabled: true/false` 后弃用 env 版本，但不在 Phase 1 spec 承诺
+- [x] **stdio driver `init_timeout` 默认是 30s（继承当前 filesystem）还是全项目统一到某值**？→ **沿用 30s**。理由：跟当前 `internal/mcp/filesystem.go` 语义一致，Phase 1 承诺"runtime 行为 0 变化"；stdio 目前只有 filesystem 一个实例，没有横向对比需求；未来若加第二个 stdio provider 且默认不合适，另开 ADR 讨论是否统一或每 yaml 覆盖
+- [ ] **`ENABLE_FS_MCP=1` env 未来是否要弃用**？倾向 Phase 4 前端有 `enabled: true/false` 后弃用 env 版本，但不在 Phase 1 spec 承诺（**留待 Phase 4 时再决**）
 
 ## References
 
