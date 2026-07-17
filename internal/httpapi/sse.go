@@ -16,6 +16,8 @@ import (
 	"github.com/cloudwego/eino/flow/agent/multiagent/host"
 	"github.com/cloudwego/eino/schema"
 	utilcb "github.com/cloudwego/eino/utils/callbacks"
+
+	"github.com/bigmay/first-agentink8s/internal/agents"
 )
 
 // Sink serializes events from three concurrent sources — the model token
@@ -110,11 +112,25 @@ func InstallToolCallbacks() {
 }
 
 // Server is the wired-up HTTP endpoint.
+//
+// Sup owns the current *host.MultiAgent behind an atomic pointer. Every
+// HandleChat call reads the pointer once (at the top) and uses that
+// snapshot for the whole request, so a concurrent Supervisor.Rebuild
+// doesn't split the request across two host instances. See
+// docs/adr/006-registry-mutation-host-swap.md for the atomic swap
+// design and docs/specs/phase-2-registry-mutation-host-swap.md §Rebuild
+// for the transactional semantics.
 type Server struct {
-	HostMA *host.MultiAgent
+	Sup *agents.Supervisor
 }
 
 func (s *Server) HandleChat(w http.ResponseWriter, r *http.Request) {
+	// Snapshot the current host once — never re-read Sup during this
+	// request. Rebuild may swap Sup.current while we're mid-stream;
+	// that's fine, the in-flight request keeps its old *MultiAgent
+	// reference until it finishes (see ADR-006 §Rebuild sequence).
+	hostMA := s.Sup.Current()
+
 	msg := extractQuery(r)
 	if msg == "" {
 		http.Error(w, "missing query: use ?q=... or POST {\"message\":\"...\"}", http.StatusBadRequest)
@@ -153,7 +169,7 @@ func (s *Server) HandleChat(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	// Producer: run the host multi-agent, pump tokens into the sink.
-	err := s.runStream(ctx, sk, msg)
+	err := s.runStream(ctx, sk, hostMA, msg)
 	if err != nil && !errors.Is(err, context.Canceled) {
 		sk.push(Event{Type: EventError, Data: ErrorData{Message: err.Error()}})
 	}
@@ -162,10 +178,10 @@ func (s *Server) HandleChat(w http.ResponseWriter, r *http.Request) {
 	<-writerDone
 }
 
-func (s *Server) runStream(ctx context.Context, sk *sink, userMsg string) error {
+func (s *Server) runStream(ctx context.Context, sk *sink, hostMA *host.MultiAgent, userMsg string) error {
 	in := []*schema.Message{schema.UserMessage(userMsg)}
 
-	sr, err := s.HostMA.Stream(ctx, in, host.WithAgentCallbacks(hostCallback{}))
+	sr, err := hostMA.Stream(ctx, in, host.WithAgentCallbacks(hostCallback{}))
 	if err != nil {
 		return fmt.Errorf("stream: %w", err)
 	}
