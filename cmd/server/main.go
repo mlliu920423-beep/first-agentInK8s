@@ -3,7 +3,7 @@
 // Bootstrap order:
 //  1. Ark chat model  (fails fast if ARK_API_KEY / ARK_MODEL_ID missing)
 //  2. Tool registry   (built-in Go tools)
-//  3. MCP sources     (in-proc always; external filesystem MCP if enabled)
+//  3. MCP sources     (declarative: mcp.LoadAll scans MCP_DIR/*.yaml)
 //  4. Agent configs   (agents/*.yaml)
 //  5. Specialists     (each = react.Agent wrapped as host.Specialist)
 //  6. Host multi-agent
@@ -29,6 +29,11 @@ import (
 	"github.com/bigmay/first-agentink8s/internal/httpapi"
 	"github.com/bigmay/first-agentink8s/internal/llm"
 	mcpbridge "github.com/bigmay/first-agentink8s/internal/mcp"
+	// Blank imports register the transport drivers with the mcp package.
+	// Loader dispatches by cfg.Transport → whichever driver has claimed
+	// that name in its init(); see docs/adr/005-mcp-driver-abstraction.md.
+	_ "github.com/bigmay/first-agentink8s/internal/mcp/inproc"
+	_ "github.com/bigmay/first-agentink8s/internal/mcp/stdio"
 	"github.com/bigmay/first-agentink8s/internal/tools"
 	"github.com/bigmay/first-agentink8s/internal/webassets"
 
@@ -43,6 +48,7 @@ func main() {
 
 	port := envOr("PORT", "8080")
 	agentsDir := envOr("AGENTS_DIR", "agents")
+	mcpDir := envOr("MCP_DIR", "mcp")
 
 	// 1. Ark model
 	arkModel, err := llm.NewArkModel(ctx)
@@ -58,18 +64,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 3. MCP sources — warn-and-continue if any fail
-	var closers []io.Closer
-	if c, err := mcpbridge.StartInProc(ctx, reg); err != nil {
-		log.Printf("mcp inproc: %v (continuing)", err)
-	} else if c != nil {
-		closers = append(closers, c)
+	// 3. MCP sources — declarative loader scans MCP_DIR/*.yaml, dispatches
+	// each entry to the driver registered for its transport, and returns
+	// io.Closer handles for shutdown. Fails fast on any startup error: a
+	// yaml that says "run this" and can't run is a configuration bug we
+	// want visible immediately (pod crashloop), not a warn-and-continue.
+	// See docs/adr/005-mcp-driver-abstraction.md.
+	mcpClosers, err := mcpbridge.LoadAll(ctx, mcpDir, reg)
+	if err != nil {
+		log.Printf("mcp: %v", err)
+		os.Exit(1)
 	}
-	if c, err := mcpbridge.StartFilesystem(ctx, reg); err != nil {
-		log.Printf("mcp filesystem: %v (continuing)", err)
-	} else if c != nil {
-		closers = append(closers, c)
-	}
+	closers := append([]io.Closer{}, mcpClosers...)
 	log.Printf("tool registry: %v", reg.Names())
 
 	// 4. Agent YAML configs

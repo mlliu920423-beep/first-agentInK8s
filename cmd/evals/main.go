@@ -28,6 +28,9 @@ import (
 	"github.com/bigmay/first-agentink8s/internal/agents"
 	"github.com/bigmay/first-agentink8s/internal/llm"
 	mcpbridge "github.com/bigmay/first-agentink8s/internal/mcp"
+	// Register transport drivers so mcpbridge.LoadAll can dispatch.
+	_ "github.com/bigmay/first-agentink8s/internal/mcp/inproc"
+	_ "github.com/bigmay/first-agentink8s/internal/mcp/stdio"
 	"github.com/bigmay/first-agentink8s/internal/tools"
 
 	"github.com/cloudwego/eino/callbacks"
@@ -113,6 +116,7 @@ func main() {
 	file := flag.String("file", "evals/routing.yaml", "path to YAML case file")
 	timeout := flag.Duration("timeout", 60*time.Second, "per-case timeout")
 	agentsDir := flag.String("agents-dir", "agents", "sub-agent yaml directory")
+	mcpDir := flag.String("mcp-dir", "mcp", "MCP server yaml directory")
 	flag.Parse()
 
 	ctx := context.Background()
@@ -126,11 +130,10 @@ func main() {
 	if err := tools.RegisterBuiltins(ctx, reg); err != nil {
 		log.Fatalf("register builtins: %v", err)
 	}
-	if _, err := mcpbridge.StartInProc(ctx, reg); err != nil {
-		log.Printf("mcp inproc: %v (continuing)", err)
-	}
-	if _, err := mcpbridge.StartFilesystem(ctx, reg); err != nil {
-		log.Printf("mcp filesystem: %v (continuing)", err)
+	// MCP: declarative loader; fail-fast on any startup error, same as
+	// cmd/server. See docs/adr/005-mcp-driver-abstraction.md.
+	if _, err := mcpbridge.LoadAll(ctx, *mcpDir, reg); err != nil {
+		log.Fatalf("mcp: %v", err)
 	}
 
 	cfgs, err := agentcfg.Load(*agentsDir)
