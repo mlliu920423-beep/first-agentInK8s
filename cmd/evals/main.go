@@ -28,10 +28,11 @@ import (
 	"github.com/bigmay/first-agentink8s/internal/agents"
 	"github.com/bigmay/first-agentink8s/internal/llm"
 	mcpbridge "github.com/bigmay/first-agentink8s/internal/mcp"
+	"github.com/bigmay/first-agentink8s/internal/tools"
+
 	// Register transport drivers so mcpbridge.LoadAll can dispatch.
 	_ "github.com/bigmay/first-agentink8s/internal/mcp/inproc"
 	_ "github.com/bigmay/first-agentink8s/internal/mcp/stdio"
-	"github.com/bigmay/first-agentink8s/internal/tools"
 
 	"github.com/cloudwego/eino/callbacks"
 	toolcomp "github.com/cloudwego/eino/components/tool"

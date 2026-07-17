@@ -77,7 +77,9 @@ func registerFake(t *testing.T) *fakeDriver {
 
 func writeYAML(t *testing.T, dir, name, body string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+	// 0o600 satisfies gosec G306; these are temp-dir test fixtures where
+	// permissions don't matter functionally.
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

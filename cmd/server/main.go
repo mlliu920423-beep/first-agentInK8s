@@ -29,13 +29,14 @@ import (
 	"github.com/bigmay/first-agentink8s/internal/httpapi"
 	"github.com/bigmay/first-agentink8s/internal/llm"
 	mcpbridge "github.com/bigmay/first-agentink8s/internal/mcp"
+	"github.com/bigmay/first-agentink8s/internal/tools"
+	"github.com/bigmay/first-agentink8s/internal/webassets"
+
 	// Blank imports register the transport drivers with the mcp package.
 	// Loader dispatches by cfg.Transport → whichever driver has claimed
 	// that name in its init(); see docs/adr/005-mcp-driver-abstraction.md.
 	_ "github.com/bigmay/first-agentink8s/internal/mcp/inproc"
 	_ "github.com/bigmay/first-agentink8s/internal/mcp/stdio"
-	"github.com/bigmay/first-agentink8s/internal/tools"
-	"github.com/bigmay/first-agentink8s/internal/webassets"
 
 	"github.com/cloudwego/eino/flow/agent/multiagent/host"
 )
