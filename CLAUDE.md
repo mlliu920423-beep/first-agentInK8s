@@ -43,7 +43,7 @@ internal/
   tools/             Tool Registry + 内置技能（calculator / weather / current_time）
   agentcfg/          agents/*.yaml 加载器
   mcp/               MCP 声明式加载：config / cond / driver / loader + inproc/ + stdio/ 子包
-  agents/            react.Agent → host.Specialist + Host + DefaultHostPrompt
+  agents/            react.Agent → host.Specialist + Host + DefaultHostPrompt；Supervisor 抽象持 atomic.Pointer[MultiAgent] 管热替换
   httpapi/           /api/chat SSE + /healthz + 静态嵌入
   webassets/         //go:embed all:dist（前端产物必须放这）
 agents/*.yaml        Specialist 声明式配置（每个 yaml 一个 agent）
@@ -59,6 +59,7 @@ Dockerfile           三阶段：node → go → distroless
 
 **核心约束：**
 - **加新 sub-agent 的常规路径 = 只加 YAML**（如果工具已存在）。不要改 `main.go` / `agents/build.go`。
+- **改 host / specialist / MCP 配置的运行时热替换路径**：`agents.Supervisor.Rebuild(ctx)` 会读全部 yaml 重建 host，用 atomic pointer 原子 swap，旧请求跑完不 drain。Phase 2 只暴露给单元测试；Phase 3 会挂 REST。**关键 caveat：Rebuild 不能调 `InstallToolCallbacks()`**（Eino `callbacks.AppendGlobalHandlers` 非幂等且非线程安全，只在 `cmd/server/main.go` step 4 一次性调）。详见 [`docs/adr/006-registry-mutation-host-swap.md`](docs/adr/006-registry-mutation-host-swap.md) / [`docs/specs/phase-2-registry-mutation-host-swap.md`](docs/specs/phase-2-registry-mutation-host-swap.md)。
 - **加新 MCP server 的常规路径 = 只加 `mcp/<name>.yaml`**（如果 transport 已支持：`inproc` 内建 provider 或 `stdio` 外部子进程）。加新 transport 类型 = 新增 `internal/mcp/<transport>/` 子包实现 `Driver` interface，loader 不改。
 - **加新内置工具** = `internal/tools/xxx.go` + 在 `registry.go` 的 `RegisterBuiltins` 循环里加一行。
 - **Host 路由 prompt** 是 `agents/build.go:101` 的 `DefaultHostPrompt` 常量，不是 YAML。改路由行为改这里。
@@ -79,6 +80,7 @@ Dockerfile           三阶段：node → go → distroless
 - `MCP_DIR` — 默认 `mcp`（容器里 `/mcp`）
 - `ENABLE_FS_MCP=1` — 启用外部 filesystem MCP（**需要 `npx` 在 PATH**，distroless runtime 里没有，只有本地开发有意义）
 - `FS_MCP_ROOT` — 外部 MCP 能访问的根目录，缺就用 CWD
+- `SUPERVISOR_MCP_GRACE_PERIOD` — 默认 `30s`。Supervisor.Rebuild 成功后旧 MCP driver 延迟 Close 的等待时间，让 in-flight 请求跑完
 
 ---
 
@@ -194,7 +196,9 @@ gh run watch  # 看最新一次 run
 7. **改 MCP 相关的约束**：加 MCP server = 加 `mcp/<name>.yaml`；加 transport 类型 = 加 `internal/mcp/<name>/` 子包 + 顶层 `cmd/server/main.go` 加 blank import；`enabled_if` 支持 `always` / `env:VAR` / `env:VAR=v` 三种，其他写法启动 fail-fast。详见 [`docs/adr/005-mcp-driver-abstraction.md`](docs/adr/005-mcp-driver-abstraction.md) 和 [`docs/specs/phase-1-mcp-declarative-loading.md`](docs/specs/phase-1-mcp-declarative-loading.md)。
 8. **不要**：
    - 把 `mcp.` 前缀里的下划线换成横线之类的"美化"（`mcp.list_dir` 是当前 in-proc MCP server 定义的名字）
-   - ~~把 Registry 从"启动时静态注册"改成"运行时动态注册"~~ —— 07-16 起 workbuddy vision 明确要动态化，见 Phase 2 spec
+   - ~~把 Registry 从"启动时静态注册"改成"运行时动态注册"~~ —— Phase 2 已加 `Unregister`；由 `agents.Supervisor.Rebuild` 单写者驱动。运行时**任何非 Supervisor** 代码直接调 `Unregister/Register` 是 anti-pattern
+   - **不要在 `Supervisor.Rebuild` 里调 `InstallToolCallbacks()` 或 `callbacks.AppendGlobalHandlers()`**（Eino 官方文档 init-once，非线程安全；ADR-006 §Compliance）
+   - **不要在 `HandleChat` 里多次读 `Sup.Current()`**（一个请求生命周期内 host 引用必须稳定；如需多次用 host 引用就在首行拿一次然后 pass 到子函数里）
    - **加 MCP server 不要改 Go 代码**（Phase 1 起）—— 加 `mcp/<name>.yaml` 就够。改 Go 只发生在：加新 transport 类型 / 加新 inproc provider / driver interface 演化。
    - 在 Go 代码里硬编码 API key / endpoint id（只走 env）
    - 在 spec / ADR 还没写就动代码 —— 除非改动确实 trivial 且能一句话解释

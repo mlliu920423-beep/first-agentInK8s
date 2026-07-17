@@ -3,11 +3,58 @@
 > 项目**当前状态 + 决策日志**，进 git、跟代码走。
 > 每次收尾在此更新；跨会话的元知识（工具坑、账号背景等）留在 `~/.claude/memory/`。
 
-**最后更新：2026-07-17（Phase 1 MCP 声明式加载 完成，待 PR 合入）**
+**最后更新：2026-07-17（晚）Phase 2 Registry 可变 + Host 原子 swap 完成，待 PR 合入**
 
 > 📍 **workbuddy 转型 vision**：[`docs/specs/workbuddy-vision.md`](docs/specs/workbuddy-vision.md)（本项目从 demo 演化为可配置多 agent 产品的 MVP 边界；下一阶段主线）
 > 📍 工程化改进路线：[`docs/roadmap-ai-engineering.md`](docs/roadmap-ai-engineering.md)（AI 辅助开发的业界实践 + 本项目改进清单，2026-07-14 起草，多数已落地）
 > 📍 架构决策记录：[`docs/adr/`](docs/adr/)（每决策一份，从 001 单二进制 / 002 Eino / 003 distroless / 004 branch protection 起）
+
+## 2026-07-17（晚）Phase 2 完成 —— Registry 可变 + Host 原子 swap
+
+**Phase 2 已实现**（feature branch `feat/registry-mutation-host-swap`，本地完成，未 push 未 PR）：
+
+- ✅ **`docs/specs/phase-2-registry-mutation-host-swap.md` 转 Accepted** —— Open Questions 5 个全 close：
+  - `gracePeriod` 参数化：`SUPERVISOR_MCP_GRACE_PERIOD` env，默认 30s
+  - Rebuild 用 `context.WithoutCancel` 派生 ctx，避免请求 ctx 取消污染背景重建
+  - Rebuild 时重跑 `agentcfg.Load`，让 yaml 编辑生效
+  - 不加 `CurrentSnapshot` 测试 API（生产接口不为测试污染）
+  - evals 不走 Supervisor（保持 evals boot 流程简洁，只 build 一次 host）
+- ✅ **`docs/adr/006-registry-mutation-host-swap.md` 起草完成** —— Alternatives 记了 5 条拒绝理由：httpapi 内联 atomic pointer、Mutex-guarded field、手动 RCU、graceful drain、合并 Phase 2+3
+- ✅ **两份 research note 支撑决策**：`docs/research/phase-2-registry-mutation-design.md` + `docs/research/phase-2-host-swap-risks.md`
+
+**代码变化**（feature branch，未 push）：
+
+- 新增 `internal/agents/supervisor.go`（约 220 行 + 130 行 `Rebuild`）：
+  - `atomic.Pointer[host.MultiAgent]` + `rebuildMu` 单写者
+  - 事务化 `Rebuild`：scratch registry dry-run，全部 build 成功才 commit
+  - grace period 延迟 `Close` 老 MCP driver（`SUPERVISOR_MCP_GRACE_PERIOD`，默认 30s）
+  - `context.WithoutCancel` 派生 ctx，Rebuild 不被请求 ctx 拖挂
+- 新增 `internal/agents/supervisor_test.go`（约 440 行）：6 PASS + 1 SKIP（`CallbacksHandlerCountUnchanged` skip，原因 eino/callbacks 无 getter）
+- 新增 `internal/tools/registry_test.go`（约 259 行）：8/8 PASS，含 ⭐ 核心测试 `Unregister_SliceReferencesStillWork` 走 `InvokableRun` 硬证 Q1 SAFE（Unregister 不影响持有旧 slice 的 in-flight 请求）
+- `internal/tools/registry.go`：加 `Unregister(name) error`（幂等）
+- `internal/httpapi/sse.go`：`Server.HostMA *host.MultiAgent` → `Server.Sup *agents.Supervisor`；`HandleChat` 首行 `sup.Current()` 一次；`runStream` 签名新增 `hostMA` 参数
+- `cmd/server/main.go`：8 步启动缩减为 5 步（Ark model / registry / Supervisor / callbacks / HTTP），Supervisor 内含原 step 3-6 全部；shutdown 调 `sup.Shutdown` 替代手工 `for range closers`
+
+**本地验证结果**：
+
+- `go build ./...` ✅
+- `go vet ./...` ✅
+- `go test ./...` ✅ 全绿
+- `go test -race` 本地跑不了（Windows 无 gcc），CI Linux 会跑；Supervisor 并发测试已用 goroutine + sync 覆盖 `rebuildMu` 序列化 + atomic 读端 non-blocking
+
+**关键设计决策**（一句话总结）：
+
+- **Supervisor 抽象层职责单一**：只管 host 生命周期 + 换 host，不管 yaml watch / 外部触发（留给 Phase 3 REST API）
+- **Rebuild 事务化**：新 host 没 build 完就不 commit，配置错误只会 log error 不会让服务失能
+- **⚠️ 关键 caveat**：`InstallToolCallbacks()` 严禁在 `Rebuild` 里调 —— Eino `callbacks.AppendGlobalHandlers` 非幂等且非线程安全，官方文档明说 init-once。`main.go` 保留 step 4 一次性 install，`Supervisor.Rebuild` 绝不动
+- **tool 引用生命周期与 Registry 解耦**：`MustResolve` 返回的 slice 是 interface 值副本，`Unregister` 只删 map；MCP client 生命周期由 Supervisor 的 `mcpClosers` 独立持有；旧 in-flight 请求跑完不 drain
+
+**待做**（下次会话 or 本次收尾）：
+
+1. 本地跑 `evals/routing.yaml` 6/6 confirmation（用户手工，需 Ark env）
+2. push feature branch + 开 PR（走 branch protection）
+3. CI `ci.yml` build/vet/lint 三绿 + `go test -race` 在 Linux 上跑
+4. squash-merge 合入 main
 
 ## 2026-07-17 Phase 1 完成 —— MCP 声明式加载
 
@@ -378,6 +425,7 @@ $env:ARK_MODEL_ID="ep-20260609204306-xj4xt"
 | 2026-07-16 | branch protection `contexts` 用 job display name（`build + vet` / `golangci-lint`）不是 job key | GitHub 匹配 required check 用的是 `jobs.<x>.name:` 值。初版用 job key `build-and-test` / `lint` 时 `app_id: null`，说明没匹配上，protection 形同虚设。修正后 `app_id: 15368` 出现，adversarial test 才真通过。已存 memory `github-required-check-name-uses-display-name` |
 | 2026-07-16 | 项目走完整 spec → ADR → PR → protection 流程首用 = PR #5 | Phase 0 元流程 setup 自己走一遍新流程验证闭环。squash-merge 保持 main history 一 PR 一 commit；`--delete-branch` 自动清理；`git remote prune` 后 local main 干净 |
 | 2026-07-17 | MCP driver 抽象 + `mcp/*.yaml` 声明式加载 | vision Phase 1 落地：加 MCP server = 加 yaml 不改 Go；enabled_if 语义清晰；fail-fast 替代 warn-and-continue。详见 [ADR-005](docs/adr/005-mcp-driver-abstraction.md) |
+| 2026-07-17（晚）| Registry 可变 + Host 原子 swap（Supervisor 抽象 + atomic.Pointer）| vision Phase 2 落地：为 Phase 3 REST API + Phase 4 UI 铺路。Rebuild 事务化 + 旧引用跑完不 drain。详见 [ADR-006](docs/adr/006-registry-mutation-host-swap.md) |
 
 ---
 
@@ -395,8 +443,10 @@ $env:ARK_MODEL_ID="ep-20260609204306-xj4xt"
 - [x] ~~`go run ./cmd/evals` 实测（或走 CI），`research-goroutine` 转绿~~ → 完成（意外转绿，n=1 baseline 不代表长期）
 - [x] ~~Phase 0 元流程 setup + branch protection~~ → 完成（07-16 傍晚，PR #5 合入 main `6a52da5`）
 - [x] **Phase 1 spec Accepted + ADR-005 起草 + 代码实现完成（2026-07-17）**
+- [x] **Phase 2 spec Accepted + ADR-006 起草 + 代码实现完成（2026-07-17 晚）**
 - [ ] **Phase 1 PR 走 branch protection 流程合入 main**（push feature branch + evals 本地/CI 结果贴 PR 描述）
-- [ ] **Phase 2 spec 起草：Registry Unregister + Host atomic swap**（workbuddy-vision Phase 2 主线）
+- [ ] **Phase 2 PR 走 branch protection 合入 main**（push + evals 结果贴 PR）
+- [ ] **Phase 3 spec 起草：REST API `/api/agents` `/api/mcp` `/api/skills` CRUD + Rebuild 触发**
 - [ ] ~~Dockerfile 加 WORKDIR + 样例文件（fix list_dir）~~ → 归到 Phase 1 里 `default_root` yaml 字段解决
 - [ ] ~~决定 filesystem MCP 在容器里怎么处理（sidecar / 放弃）~~ → 归到 Phase 1 `enabled_if` gate 声明式表达
 - [ ] Dependabot 6 CVE 清理（Phase 1 完成后单独 fix 分支；全部 dev-only 或 transitive，不影响 runtime）
