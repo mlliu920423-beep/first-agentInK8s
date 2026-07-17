@@ -76,9 +76,11 @@ linters:
         linters:
           - gocritic
         text: "exitAfterDefer"
-      # internal/mcp/filesystem: root / npxPath 来自本地 env（FS_MCP_ROOT / PATH），
-      # 不是网络输入，gosec 对 taint 判断过严；日志已用 %q 转义，风险可接受。
-      - path: internal/mcp/filesystem\.go
+      # internal/agents/supervisor.go: SUPERVISOR_MCP_GRACE_PERIOD env 值
+      # 走进 log 触发 gosec G706（静态 taint 追踪）。该 env 是本地部署
+      # 配置不是网络输入，%q 已做转义；跟历史上 internal/mcp/filesystem.go
+      # 的 G706 同款豁免理由（见 2026-07-15 STATUS 决策日志）。
+      - path: internal/agents/supervisor\.go
         linters:
           - gosec
         text: "G706"

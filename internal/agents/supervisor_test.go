@@ -104,7 +104,7 @@ enabled_if: always
 // gosec (same as loader_test.go).
 func writeFile(t *testing.T, path, body string) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		t.Fatalf("mkdir %s: %v", filepath.Dir(path), err)
 	}
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
@@ -264,7 +264,6 @@ func TestSupervisor_ConcurrentRebuilds_Serialized(t *testing.T) {
 	done := make(chan struct{})
 
 	for i := 0; i < N; i++ {
-		i := i
 		go func() {
 			defer wg.Done()
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
