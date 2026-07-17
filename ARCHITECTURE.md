@@ -96,7 +96,7 @@ flowchart TB
   SSEClient -.HTTP GET /api/chat.-> HTTP
   HTTP --> SSE
   HTTP --> Static
-  SSE -.Current&#40;&#41; lock-free.-> Sup
+  SSE -.Current lock-free.-> Sup
   Sup -.atomic.Pointer.-> HostMA
   HostMA -.选一个.-> Spec1
   HostMA -.选一个.-> Spec2
