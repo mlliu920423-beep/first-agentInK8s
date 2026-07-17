@@ -42,11 +42,12 @@ internal/
   llm/               Ark ChatModel 工厂（单点，所有 agent 共享一个实例）
   tools/             Tool Registry + 内置技能（calculator / weather / current_time）
   agentcfg/          agents/*.yaml 加载器
-  mcp/               inproc + 外部 stdio MCP 桥接（→ Registry）
+  mcp/               MCP 声明式加载：config / cond / driver / loader + inproc/ + stdio/ 子包
   agents/            react.Agent → host.Specialist + Host + DefaultHostPrompt
   httpapi/           /api/chat SSE + /healthz + 静态嵌入
   webassets/         //go:embed all:dist（前端产物必须放这）
 agents/*.yaml        Specialist 声明式配置（每个 yaml 一个 agent）
+mcp/*.yaml           MCP server 声明（每个 yaml 一个 server，跟 agents/ 对称）
 evals/               路由回归 case 集（routing.yaml + README.md）
 web/                 React + Vite 前端源码
 k8s/                 deployment / service / secret 模板
@@ -58,6 +59,7 @@ Dockerfile           三阶段：node → go → distroless
 
 **核心约束：**
 - **加新 sub-agent 的常规路径 = 只加 YAML**（如果工具已存在）。不要改 `main.go` / `agents/build.go`。
+- **加新 MCP server 的常规路径 = 只加 `mcp/<name>.yaml`**（如果 transport 已支持：`inproc` 内建 provider 或 `stdio` 外部子进程）。加新 transport 类型 = 新增 `internal/mcp/<transport>/` 子包实现 `Driver` interface，loader 不改。
 - **加新内置工具** = `internal/tools/xxx.go` + 在 `registry.go` 的 `RegisterBuiltins` 循环里加一行。
 - **Host 路由 prompt** 是 `agents/build.go:101` 的 `DefaultHostPrompt` 常量，不是 YAML。改路由行为改这里。
 - **前后端事件契约**在两处独立声明（`internal/httpapi/events.go` + `web/src/sseClient.ts`），加事件类型两边都要改，暂时没 codegen。
@@ -74,6 +76,7 @@ Dockerfile           三阶段：node → go → distroless
 - `ARK_BASE_URL` / `ARK_REGION` — 覆盖默认
 - `PORT` — 默认 8080
 - `AGENTS_DIR` — 默认 `agents`（容器里 `/agents`）
+- `MCP_DIR` — 默认 `mcp`（容器里 `/mcp`）
 - `ENABLE_FS_MCP=1` — 启用外部 filesystem MCP（**需要 `npx` 在 PATH**，distroless runtime 里没有，只有本地开发有意义）
 - `FS_MCP_ROOT` — 外部 MCP 能访问的根目录，缺就用 CWD
 
@@ -188,13 +191,15 @@ gh run watch  # 看最新一次 run
 4. **【硬规矩】不直推 `main`**：每个特性一个 feature branch（命名 `feat/<slug>` / `fix/<slug>` / `docs/<slug>`），走 PR 流程。PR 描述用 `.github/pull_request_template.md` 模板。**GitHub `main` 分支已设 branch protection**（见 [`docs/adr/004-branch-protection-on-main.md`](docs/adr/004-branch-protection-on-main.md)：仓库为此从 Private 转 Public），直推会被拒。
 5. **改 host prompt / specialist description 后必须跑 `evals/routing.yaml`**，别只靠"手点浏览器验证"。CI 已把 evals 作为可选门槛，改动路由 / prompt 相关代码时 PR 描述里明确本地/CI evals 结果。
 6. **加事件类型时改两处**：`internal/httpapi/events.go` 和 `web/src/sseClient.ts`（+ `App.tsx` 里 `applyEvent` 的 switch）。
-7. **不要**：
+7. **改 MCP 相关的约束**：加 MCP server = 加 `mcp/<name>.yaml`；加 transport 类型 = 加 `internal/mcp/<name>/` 子包 + 顶层 `cmd/server/main.go` 加 blank import；`enabled_if` 支持 `always` / `env:VAR` / `env:VAR=v` 三种，其他写法启动 fail-fast。详见 [`docs/adr/005-mcp-driver-abstraction.md`](docs/adr/005-mcp-driver-abstraction.md) 和 [`docs/specs/phase-1-mcp-declarative-loading.md`](docs/specs/phase-1-mcp-declarative-loading.md)。
+8. **不要**：
    - 把 `mcp.` 前缀里的下划线换成横线之类的"美化"（`mcp.list_dir` 是当前 in-proc MCP server 定义的名字）
    - ~~把 Registry 从"启动时静态注册"改成"运行时动态注册"~~ —— 07-16 起 workbuddy vision 明确要动态化，见 Phase 2 spec
+   - **加 MCP server 不要改 Go 代码**（Phase 1 起）—— 加 `mcp/<name>.yaml` 就够。改 Go 只发生在：加新 transport 类型 / 加新 inproc provider / driver interface 演化。
    - 在 Go 代码里硬编码 API key / endpoint id（只走 env）
    - 在 spec / ADR 还没写就动代码 —— 除非改动确实 trivial 且能一句话解释
-8. **代码风格**：跟着 `gofmt` + `go vet`；`golangci-lint` 已启用（配置在 `.golangci.yml`），提交前跑一次。
-9. **踩到新坑及时进 memory**：任何"下次会话会重踩"的坑写进 `~/.claude/projects/D--Bigmay-Projects-first-agentInK8s/memory/` 里，一坑一文件，并在 `MEMORY.md` 加一行指针。
+9. **代码风格**：跟着 `gofmt` + `go vet`；`golangci-lint` 已启用（配置在 `.golangci.yml`），提交前跑一次。
+10. **踩到新坑及时进 memory**：任何"下次会话会重踩"的坑写进 `~/.claude/projects/D--Bigmay-Projects-first-agentInK8s/memory/` 里，一坑一文件，并在 `MEMORY.md` 加一行指针。
 
 ---
 
