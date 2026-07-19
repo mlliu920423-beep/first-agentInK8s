@@ -27,8 +27,8 @@ import (
 // Fields marked (inproc only) / (stdio only) are honoured only by that driver;
 // setting them on the wrong transport is a parse-time error (see validate).
 type Config struct {
-	Name      string `yaml:"name"`
-	Transport string `yaml:"transport"` // "inproc" | "stdio"
+	Name      string `yaml:"name"         json:"name"`
+	Transport string `yaml:"transport"    json:"transport"` // "inproc" | "stdio"
 
 	// EnabledIf declares when this server should be started. Grammar (MVP):
 	//   "" | "always"        → always enabled
@@ -36,17 +36,17 @@ type Config struct {
 	//   "env:VAR=value"      → os.Getenv("VAR") == "value"
 	// Anything else is a parse-time error (typos fail-fast rather than
 	// silently disable the server, which would be much harder to debug).
-	EnabledIf string `yaml:"enabled_if,omitempty"`
+	EnabledIf string `yaml:"enabled_if,omitempty" json:"enabled_if,omitempty"`
 
 	// inproc only ---
-	Provider    string `yaml:"provider,omitempty"`     // which builtin implementation
-	DefaultRoot string `yaml:"default_root,omitempty"` // used e.g. by list_dir when caller passes ""
+	Provider    string `yaml:"provider,omitempty"     json:"provider,omitempty"`     // which builtin implementation
+	DefaultRoot string `yaml:"default_root,omitempty" json:"default_root,omitempty"` // used e.g. by list_dir when caller passes ""
 
 	// stdio only ---
-	Command     string            `yaml:"command,omitempty"`
-	Args        []string          `yaml:"args,omitempty"`
-	Env         map[string]string `yaml:"env,omitempty"`
-	InitTimeout time.Duration     `yaml:"init_timeout,omitempty"` // default 30s if zero
+	Command     string            `yaml:"command,omitempty"     json:"command,omitempty"`
+	Args        []string          `yaml:"args,omitempty"        json:"args,omitempty"`
+	Env         map[string]string `yaml:"env,omitempty"         json:"env,omitempty"`
+	InitTimeout time.Duration     `yaml:"init_timeout,omitempty" json:"init_timeout,omitempty"` // default 30s if zero
 
 	// path retained for error messages; not written from yaml.
 	sourcePath string `yaml:"-"`

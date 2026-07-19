@@ -81,8 +81,8 @@ func startBuiltinDemo(ctx context.Context, cfg mcp.Config, reg *tools.Registry) 
 		func(ctx context.Context, req mcpproto.CallToolRequest) (*mcpproto.CallToolResult, error) {
 			// Resolve path: caller "" or "." falls back to cfg.DefaultRoot,
 			// then finally to ".". This fixes STATUS #1 where list_dir in
-			// the distroless container returned [] because CWD is empty;
-			// mcp/demo.yaml sets default_root: /agents.
+			// the distroless container returned [] because CWD is unknown;
+			// mcp/mcp.yaml sets default_root: /agents.
 			path := req.GetString("path", "")
 			if path == "" || path == "." {
 				if cfg.DefaultRoot != "" {
