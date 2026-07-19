@@ -12,10 +12,7 @@ transport: inproc
 provider: builtin-demo
 enabled_if: always
 
-# Fallback for `list_dir({"path": ""})` — resolved relative to the process
-# CWD, so it works both locally (running from repo root: `./agents`) and in
-# the distroless container (CWD = `/`, so this is effectively `/agents`,
-# which Dockerfile guarantees exists via `COPY agents/ /agents/`).
-# Without this the distroless runtime's near-empty `/` returned an empty
-# array (STATUS.md known issue #1).
-default_root: agents
+# Fallback for `list_dir({"path": ""})`. Absolute path so it works regardless
+# of the process CWD in the distroless container. Dockerfile guarantees
+# `/agents/` exists via `COPY agents/ /agents/`.
+default_root: /agents

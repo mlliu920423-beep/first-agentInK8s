@@ -15,11 +15,11 @@ import (
 )
 
 type AgentConfig struct {
-	Name         string   `yaml:"name"`
-	Description  string   `yaml:"description"`
-	SystemPrompt string   `yaml:"system_prompt"`
-	Tools        []string `yaml:"tools"`
-	MaxStep      int      `yaml:"max_step"`
+	Name         string   `yaml:"name"         json:"name"`
+	Description  string   `yaml:"description"  json:"description"`
+	SystemPrompt string   `yaml:"system_prompt" json:"system_prompt"`
+	Tools        []string `yaml:"tools"         json:"tools"`
+	MaxStep      int      `yaml:"max_step"      json:"max_step"`
 }
 
 // Load reads every *.yaml/*.yml under dir, sorted by filename for determinism.
