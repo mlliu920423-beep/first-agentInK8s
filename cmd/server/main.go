@@ -3,20 +3,23 @@
 // Bootstrap order:
 //  1. Ark chat model  (fails fast if ARK_API_KEY / ARK_MODEL_ID missing)
 //  2. Tool registry   (built-in Go tools)
-//  3. MCP sources     (in-proc always; external filesystem MCP if enabled)
-//  4. Agent configs   (agents/*.yaml)
-//  5. Specialists     (each = react.Agent wrapped as host.Specialist)
-//  6. Host multi-agent
-//  7. Global tool callback hook  (drives SSE tool_call/tool_result events)
-//  8. HTTP server     (/api/chat SSE, /healthz, / static)
+//  3. Supervisor      (loads MCP servers + agent configs + specialists + host)
+//  4. Global tool callback hook  (drives SSE tool_call/tool_result events)
+//  5. HTTP server     (/api/chat SSE, /healthz, / static)
 //
-// On SIGINT/SIGTERM: shutdown HTTP server, then close every MCP client.
+// On SIGINT/SIGTERM: shutdown HTTP server, then Supervisor.Shutdown
+// closes every MCP client.
+//
+// The Supervisor abstraction (internal/agents/supervisor.go) owns the
+// current *host.MultiAgent behind an atomic pointer and provides a
+// transactional Rebuild(ctx) method. Phase 2 only exercises Rebuild
+// from unit tests; Phase 3 will hang a REST endpoint on it. See
+// docs/adr/006-registry-mutation-host-swap.md.
 package main
 
 import (
 	"context"
 	"errors"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -24,15 +27,18 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bigmay/first-agentink8s/internal/agentcfg"
 	"github.com/bigmay/first-agentink8s/internal/agents"
+	"github.com/bigmay/first-agentink8s/internal/configstore"
 	"github.com/bigmay/first-agentink8s/internal/httpapi"
 	"github.com/bigmay/first-agentink8s/internal/llm"
-	mcpbridge "github.com/bigmay/first-agentink8s/internal/mcp"
 	"github.com/bigmay/first-agentink8s/internal/tools"
 	"github.com/bigmay/first-agentink8s/internal/webassets"
 
-	"github.com/cloudwego/eino/flow/agent/multiagent/host"
+	// Blank imports register the transport drivers with the mcp package.
+	// Loader dispatches by cfg.Transport → whichever driver has claimed
+	// that name in its init(); see docs/adr/005-mcp-driver-abstraction.md.
+	_ "github.com/bigmay/first-agentink8s/internal/mcp/inproc"
+	_ "github.com/bigmay/first-agentink8s/internal/mcp/stdio"
 )
 
 func main() {
@@ -43,6 +49,7 @@ func main() {
 
 	port := envOr("PORT", "8080")
 	agentsDir := envOr("AGENTS_DIR", "agents")
+	mcpDir := envOr("MCP_DIR", "mcp")
 
 	// 1. Ark model
 	arkModel, err := llm.NewArkModel(ctx)
@@ -58,66 +65,48 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 3. MCP sources — warn-and-continue if any fail
-	var closers []io.Closer
-	if c, err := mcpbridge.StartInProc(ctx, reg); err != nil {
-		log.Printf("mcp inproc: %v (continuing)", err)
-	} else if c != nil {
-		closers = append(closers, c)
-	}
-	if c, err := mcpbridge.StartFilesystem(ctx, reg); err != nil {
-		log.Printf("mcp filesystem: %v (continuing)", err)
-	} else if c != nil {
-		closers = append(closers, c)
+	// 3. Supervisor — loads MCP + agents/*.yaml, builds specialists +
+	// host, and hands us a *Supervisor whose Current() returns the
+	// atomic *MultiAgent pointer. Fails fast on any startup error.
+	sup, err := agents.NewSupervisor(ctx, agents.SupervisorDeps{
+		Model:      arkModel,
+		Registry:   reg,
+		AgentsDir:  agentsDir,
+		McpDir:     mcpDir,
+		HostPrompt: agents.DefaultHostPrompt,
+	})
+	if err != nil {
+		log.Printf("supervisor: %v", err)
+		os.Exit(1)
 	}
 	log.Printf("tool registry: %v", reg.Names())
 
-	// 4. Agent YAML configs
-	cfgs, err := agentcfg.Load(agentsDir)
-	if err != nil {
-		log.Printf("agentcfg: %v", err)
-		os.Exit(1)
-	}
-	log.Printf("loaded %d agent configs from %s", len(cfgs), agentsDir)
-
-	// 5. Specialists
-	specialists := make([]*host.Specialist, 0, len(cfgs))
-	for _, cfg := range cfgs {
-		sp, err := agents.BuildSpecialist(ctx, arkModel, cfg, reg)
-		if err != nil {
-			log.Printf("build specialist %q: %v", cfg.Name, err)
-			os.Exit(1)
-		}
-		specialists = append(specialists, sp)
-		log.Printf("specialist ready: %s — %d tools", cfg.Name, len(cfg.Tools))
-	}
-
-	// 6. Host multi-agent
-	hostMA, err := agents.BuildHost(ctx, arkModel, agents.DefaultHostPrompt, specialists)
-	if err != nil {
-		log.Printf("build host multi-agent: %v", err)
-		os.Exit(1)
-	}
-
-	// 7. Global tool callback hook — must be installed before the first request
+	// 4. Global tool callback hook — install ONCE at boot. Never call
+	// this again (not even from Supervisor.Rebuild) — Eino's
+	// callbacks.AppendGlobalHandlers is documented as init-once and
+	// non-thread-safe. See docs/research/phase-2-host-swap-risks.md §3.
 	httpapi.InstallToolCallbacks()
 
-	// 8. HTTP server
+	// 5. Config store (Phase 3) — backs the CRUD API
+	store, err := configstore.NewStore(agentsDir, mcpDir)
+	if err != nil {
+		log.Printf("configstore: %v", err)
+		os.Exit(1)
+	}
+
+	// 6. HTTP server — uses httprouter.NewRouter() for all routes:
+	// /healthz, /api/chat, /api/agents/*, /api/mcp/*, /api/reload, /* SPA
 	distFS, err := webassets.FS()
 	if err != nil {
 		log.Printf("webassets: %v", err)
 		os.Exit(1)
 	}
-	apiSrv := &httpapi.Server{HostMA: hostMA}
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", httpapi.Healthz)
-	mux.HandleFunc("/api/chat", apiSrv.HandleChat)
-	mux.Handle("/", httpapi.StaticHandler(distFS))
+	apiSrv := &httpapi.Server{Sup: sup, Store: store}
+	router := httpapi.NewRouter(apiSrv, distFS)
 
 	server := &http.Server{
 		Addr:              ":" + port,
-		Handler:           mux,
+		Handler:           router,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -137,8 +126,8 @@ func main() {
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Printf("http shutdown: %v", err)
 	}
-	for _, c := range closers {
-		_ = c.Close()
+	if err := sup.Shutdown(shutdownCtx); err != nil {
+		log.Printf("supervisor shutdown: %v", err)
 	}
 	log.Printf("bye")
 }

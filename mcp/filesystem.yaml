@@ -1,0 +1,22 @@
+# Filesystem MCP server, external stdio process.
+#
+# Uses the official `@modelcontextprotocol/server-filesystem` package
+# via `npx`, gated by `ENABLE_FS_MCP=1` — because npx is not present
+# in the distroless runtime image. Local dev with Node installed can
+# enable it; the k8s deployment will see this as disabled and log so.
+#
+# The declared server name `fs` is also the tool-prefix in the
+# registry (fs.read_file, fs.write_file, …); agents/*.yaml reference
+# those names directly and MUST NOT be changed together with this.
+#
+# Related: docs/specs/phase-1-mcp-declarative-loading.md,
+# docs/adr/005-mcp-driver-abstraction.md
+name: fs
+transport: stdio
+enabled_if: env:ENABLE_FS_MCP=1
+command: npx
+args:
+  - "-y"
+  - "@modelcontextprotocol/server-filesystem"
+  - "${env:FS_MCP_ROOT:-.}"
+init_timeout: 30s

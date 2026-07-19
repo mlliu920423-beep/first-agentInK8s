@@ -24,6 +24,9 @@ COPY --from=gobuild /out/server /server
 # Embed the agent yaml configs at a known location; overridable via AGENTS_DIR.
 COPY agents/ /agents/
 ENV AGENTS_DIR=/agents
+# MCP server declarations; overridable via MCP_DIR. See docs/adr/005 for schema.
+COPY mcp/ /mcp/
+ENV MCP_DIR=/mcp
 EXPOSE 8080
 USER nonroot:nonroot
 ENTRYPOINT ["/server"]

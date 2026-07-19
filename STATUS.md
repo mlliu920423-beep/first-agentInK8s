@@ -3,9 +3,199 @@
 > 项目**当前状态 + 决策日志**，进 git、跟代码走。
 > 每次收尾在此更新；跨会话的元知识（工具坑、账号背景等）留在 `~/.claude/memory/`。
 
-**最后更新：2026-07-16（凌晨）**（evals workflow 首跑通，6/6 baseline 全绿；`research-goroutine` 意外转绿）
+**最后更新：2026-07-19 Phase 3 REST API CRUD + 持久化 + 热重载 完成，已合入 main**
 
-> 📍 工程化改进路线：[`docs/roadmap-ai-engineering.md`](docs/roadmap-ai-engineering.md)（AI 辅助开发的业界实践 + 本项目改进清单，2026-07-14 起草）
+> 📍 **workbuddy 转型 vision**：[`docs/specs/workbuddy-vision.md`](docs/specs/workbuddy-vision.md)（本项目从 demo 演化为可配置多 agent 产品的 MVP 边界；下一阶段主线）
+> 📍 工程化改进路线：[`docs/roadmap-ai-engineering.md`](docs/roadmap-ai-engineering.md)（AI 辅助开发的业界实践 + 本项目改进清单，2026-07-14 起草，多数已落地）
+> 📍 架构决策记录：[`docs/adr/`](docs/adr/)（每决策一份，从 001 单二进制 / 002 Eino / 003 distroless / 004 branch protection 起）
+
+## 2026-07-19 Phase 3 完成 —— REST API CRUD + 配置持久化 + 热重载
+
+**Phase 3 已完成**（PR #10 `bda9429`，squash-merge 合入 main）：
+
+**spec 与 ADR 产出**：
+- ✅ **`docs/specs/phase-3-rest-api-crud.md` 转 Accepted** —— 4 种持久化方案对比（文件 vs sqlite vs 纯内存 vs etcd），选定文件系统 yaml 持久化
+- ✅ **`docs/adr/007-rest-api-persistence.md` 起草完成** —— 5 个 Open Questions 全 close
+
+**代码变化摘要**（13 files, +1567/-36）：
+- 新增 `internal/configstore/store.go` + `store_test.go`：Agents / MCP CRUD，原子写 + 软删除，5 个单元测试全部 PASS
+- 新增 `internal/httpapi/api.go` + `routes.go`：11 个 endpoint handler + httprouter 统一路由注册
+- 修改 `internal/mcp/config.go`：暴露 `ParseConfigForAPI` + `ValidateForAPI`
+- 修改 `internal/agents/supervisor.go`：新增 `Reload(ctx)` 作为 `Rebuild()` 的 API 友好别名
+- 修改 `cmd/server/main.go` + `internal/httpapi/sse.go`：接入 configstore 和新路由
+
+**API 列表**（11 个 endpoint）：
+| Method | Path | 说明 |
+|---|---|---|
+| GET/POST | `/api/chat` | SSE 聊天（不变） |
+| GET | `/api/agents` | 列出所有 agent |
+| GET | `/api/agents/:name` | 获取单个 agent |
+| POST | `/api/agents` | 创建 agent（自动 reload） |
+| PUT | `/api/agents/:name` | 更新 agent（自动 reload） |
+| DELETE | `/api/agents/:name` | 软删除 agent（自动 reload） |
+| GET | `/api/mcp` | 列出所有 MCP server |
+| GET | `/api/mcp/:name` | 获取单个 MCP |
+| POST | `/api/mcp` | 创建 MCP（自动 reload） |
+| PUT | `/api/mcp/:name` | 更新 MCP（自动 reload） |
+| DELETE | `/api/mcp/:name` | 软删除 MCP（自动 reload） |
+| POST | `/api/reload` | 手动触发热加载 |
+
+**CI 验证结果**：
+- `go build ./...` ✅ | `go vet ./...` ✅ | `go test ./...` ✅ 全绿
+- `golangci-lint` CI 全绿 ✅ | Linux `go test -race` CI 全绿 ✅
+
+**关键设计决策**：
+- **配置持久化走文件系统**：原子写 + 软删除，单二进制零外部依赖
+- **CRUD + Reload 绑定**：POST/PUT/DELETE 自动调 `Supervisor.Reload()`，失败返回 500 但不影响旧服务
+- **向后兼容**：没有 API 调用时，行为跟 Phase 2 完全一样
+
+**待做**：
+- [ ] Phase 4：前端配置 UI（shadcn/ui + Tailwind + react-router-dom）
+- [ ] evals 补充 Phase 3 相关 case
+
+## 2026-07-17（晚）Phase 2 完成 —— Registry 可变 + Host 原子 swap
+
+**Phase 2 已完成**（PR #7 `4116ca9`，已 squash-merge 合入 main）：
+
+- ✅ **`docs/specs/phase-2-registry-mutation-host-swap.md` 转 Accepted** —— Open Questions 5 个全 close：
+  - `gracePeriod` 参数化：`SUPERVISOR_MCP_GRACE_PERIOD` env，默认 30s
+  - Rebuild 用 `context.WithoutCancel` 派生 ctx，避免请求 ctx 取消污染背景重建
+  - Rebuild 时重跑 `agentcfg.Load`，让 yaml 编辑生效
+  - 不加 `CurrentSnapshot` 测试 API（生产接口不为测试污染）
+  - evals 不走 Supervisor（保持 evals boot 流程简洁，只 build 一次 host）
+- ✅ **`docs/adr/006-registry-mutation-host-swap.md` 起草完成** —— Alternatives 记了 5 条拒绝理由：httpapi 内联 atomic pointer、Mutex-guarded field、手动 RCU、graceful drain、合并 Phase 2+3
+- ✅ **两份 research note 支撑决策**：`docs/research/phase-2-registry-mutation-design.md` + `docs/research/phase-2-host-swap-risks.md`
+
+**CI 验证结果**：
+- `ci.yml` build/vet/lint 三绿 ✅
+- Linux `go test -race` 全绿 ✅
+- PR #7 `4116ca9` squash-merge 合入 main ✅
+
+**代码变化摘要**：
+
+- 新增 `internal/agents/supervisor.go`（约 220 行 + 130 行 `Rebuild`）：
+  - `atomic.Pointer[host.MultiAgent]` + `rebuildMu` 单写者
+  - 事务化 `Rebuild`：scratch registry dry-run，全部 build 成功才 commit
+  - grace period 延迟 `Close` 老 MCP driver（`SUPERVISOR_MCP_GRACE_PERIOD`，默认 30s）
+  - `context.WithoutCancel` 派生 ctx，Rebuild 不被请求 ctx 拖挂
+- 新增 `internal/agents/supervisor_test.go`（约 440 行）：6 PASS + 1 SKIP（`CallbacksHandlerCountUnchanged` skip，原因 eino/callbacks 无 getter）
+- 新增 `internal/tools/registry_test.go`（约 259 行）：8/8 PASS，含 ⭐ 核心测试 `Unregister_SliceReferencesStillWork` 走 `InvokableRun` 硬证 Q1 SAFE（Unregister 不影响持有旧 slice 的 in-flight 请求）
+- `internal/tools/registry.go`：加 `Unregister(name) error`（幂等）
+- `internal/httpapi/sse.go`：`Server.HostMA *host.MultiAgent` → `Server.Sup *agents.Supervisor`；`HandleChat` 首行 `sup.Current()` 一次；`runStream` 签名新增 `hostMA` 参数
+- `cmd/server/main.go`：8 步启动缩减为 5 步（Ark model / registry / Supervisor / callbacks / HTTP），Supervisor 内含原 step 3-6 全部；shutdown 调 `sup.Shutdown` 替代手工 `for range closers`
+
+**本地验证结果**：
+
+- `go build ./...` ✅
+- `go vet ./...` ✅
+- `go test ./...` ✅ 全绿
+- `go test -race` 本地跑不了（Windows 无 gcc），CI Linux 会跑；Supervisor 并发测试已用 goroutine + sync 覆盖 `rebuildMu` 序列化 + atomic 读端 non-blocking
+
+**关键设计决策**（一句话总结）：
+
+- **Supervisor 抽象层职责单一**：只管 host 生命周期 + 换 host，不管 yaml watch / 外部触发（留给 Phase 3 REST API）
+- **Rebuild 事务化**：新 host 没 build 完就不 commit，配置错误只会 log error 不会让服务失能
+- **⚠️ 关键 caveat**：`InstallToolCallbacks()` 严禁在 `Rebuild` 里调 —— Eino `callbacks.AppendGlobalHandlers` 非幂等且非线程安全，官方文档明说 init-once。`main.go` 保留 step 4 一次性 install，`Supervisor.Rebuild` 绝不动
+- **tool 引用生命周期与 Registry 解耦**：`MustResolve` 返回的 slice 是 interface 值副本，`Unregister` 只删 map；MCP client 生命周期由 Supervisor 的 `mcpClosers` 独立持有；旧 in-flight 请求跑完不 drain
+
+## 2026-07-17 Phase 1 完成 —— MCP 声明式加载
+
+**Phase 1 已完成**（PR #6 `6c2e947`，已 squash-merge 合入 main）：
+
+- ✅ **`docs/specs/phase-1-mcp-declarative-loading.md` 转 Accepted** —— Open Questions 全 close：`stdio.init_timeout` 沿用 30s；`ENABLE_FS_MCP` 未来是否弃用留 Phase 4 决
+- ✅ **`docs/adr/005-mcp-driver-abstraction.md` 起草完成** —— Alternatives 记了 4 条拒绝理由：单文件 yaml、只参数化 enabled_if、CEL 表达式引擎、`os.ExpandEnv`
+
+**CI 验证结果**：
+- `ci.yml` build/vet/lint 三绿 ✅
+- Linux `go test -race` 全绿 ✅
+- PR #6 `6c2e947` squash-merge 合入 main ✅
+
+**代码变化摘要**：
+
+- 新布局：`internal/mcp/{config,cond,driver,loader}.go` + `internal/mcp/inproc/inproc.go` + `internal/mcp/stdio/stdio.go`
+- 删掉旧 `internal/mcp/{inproc,filesystem}.go`
+- `cmd/server/main.go` 第 3 步从两次硬编码 `Start*` 换成一次 `mcp.LoadAll(MCP_DIR)`
+- `cmd/evals/main.go` 同上换掉 —— **这是 Task #4 之外意外收编的**，evals 的 boot 流程要跟 server 保持镜像，不然两条路径漂移
+- 新增 `mcp/mcp.yaml`（inproc + `default_root: /agents`）+ `mcp/filesystem.yaml`（stdio + `enabled_if: env:ENABLE_FS_MCP=1`）
+- Dockerfile 加 `COPY mcp/ /mcp/` + `ENV MCP_DIR=/mcp`
+
+**关键设计决策**（一句话总结）：
+
+- **Driver + Loader 双层分层**：Driver = 每 transport 一实现（`inproc` / `stdio`），Loader = 扫 yaml → 判 `enabled_if` → 分派 driver
+- **fail-fast 语义变化**：`enabled_if=true` 但启动失败 = pod crashloop（旧行为是 warn-and-continue），是**行为语义变化**
+- **tool name 前缀 = `cfg.Name + "."`** —— 所以 `mcp/filesystem.yaml` 里 `name: fs`（不是 `filesystem`），保留旧 `fs.*` 前缀不改 agents/*.yaml
+- **`enabled_if` 语法故意做窄**：只支持 `always` / `env:VAR` / `env:VAR=v` 三种，拼错 fail-fast（拒绝 CEL / `os.ExpandEnv` 那类通用表达式，见 ADR-005）
+- **inproc `list_dir` 新增 `default_root` 兜底**：修 STATUS 已知问题 #1（distroless 里 CWD 是 `/` 极简），无参调用现在返回 `/agents` 目录内容
+
+**本地验证结果**：
+
+- `go build ./...` ✅
+- `go vet ./...` ✅
+- `go test ./internal/mcp/...` ✅（含 `cond_test.go` / `loader_test.go`）
+- `golangci-lint` 本地没装，CI 兜底 ✅
+- evals：CI `evals.yml` 待手动触发（需 Ark secret）
+
+## 2026-07-16 傍晚 Phase 0 收尾 + Phase 1 起手
+
+**Phase 0 已完成** —— 转型元流程 setup 全部落地：
+
+- ✅ 仓库从 **Private 转 Public**（GitHub Free 私有仓库不支持 branch protection；详见 [ADR-004](docs/adr/004-branch-protection-on-main.md)）
+- ✅ **Secret scanning + Push protection + Dependabot security updates** 全部启用（`gh api PATCH` 一把改）
+- ✅ **`main` 分支 branch protection** 生效：required PR + required checks (`build + vet` / `golangci-lint`) + enforce_admins + no force-push + required_conversation_resolution
+- ✅ **Adversarial test 通过**：`git push origin main` 被拒（`remote: error: GH006: Protected branch update failed`）
+- ✅ **PR #5 合入 main**（squash-merge `6a52da5`）—— **第一个走完整 branch protection 流程的 PR**，Phase 0 正式收尾。产出：spec + ADR 模板、ADR-001~004、workbuddy-vision.md、PR 模板、CLAUDE.md 硬规矩生效
+- ✅ 踩过一个坑：branch protection 里的 `contexts` 数组填的是 **job display name**（`build + vet`）不是 job key（`build-and-test`），app_id null 是没匹配的信号。修正后 app_id 15368 出现。已存 memory `github-required-check-name-uses-display-name`
+
+**Phase 1 起手**（feature branch `feat/mcp-declarative-loading`，仅 spec，未推）：
+
+- ✅ **`docs/specs/phase-1-mcp-declarative-loading.md`** 已起草（376 行，Draft 状态，待用户 review）
+- 一句话摘要：把 `internal/mcp/{inproc,filesystem}.go` 硬编码 + `main.go` 硬调用重构成**目录扫描声明式** —— `mcp/*.yaml` + driver 抽象（inproc / stdio 两种 transport）+ `enabled_if` 表达式（`always` / `env:VAR` / `env:VAR=v`）
+- **运行时行为承诺 0 变化**：evals 6/6 必须保持绿；tool 名字前缀 `mcp.*` / `fs.*` 不变；agents/*.yaml 不改
+- **顺带解决 STATUS 已知问题 #1（list_dir 空）+ #2（fs MCP 无 npx）** —— yaml `default_root` + `enabled_if` 语义清晰化
+- **明确决定 fail-fast**：enabled=true 但启动失败 = pod crashloop（不再 warn-and-continue），是一处**行为语义变化**待用户确认
+- Spec 里剩 1 个 Open Question 待敲定：`stdio.init_timeout` 默认 30s 沿用 vs 全项目统一（倾向沿用）
+- **代码未动**，spec review 通过后再写 ADR-005 + 开工实现
+
+**Dependabot 报的 6 个 CVE**（Public 启用后首扫）：2 high (vite Windows path bypass / buger/jsonparser DoS) + 4 moderate (vite × 2 / esbuild / protobuf)。**全部 dev-only 或 transitive**，runtime image 是 distroless static，不包含 npm 生态，实际暴露面远低于标注严重程度。**已延后处理**：Phase 1 完成后单独 fix 分支清一批。
+
+**待用户 review 后续动作**：
+1. Phase 1 spec review → 用户敲定 Open Question + 确认 fail-fast → 我写 ADR-005 → 实现代码
+2. Dependabot 6 CVE 清理（可延后到 Phase 1 完成后）
+3. `.github/workflows/*.yml` 里几个 action version 升级消 deprecation warning（低优先，后续 PR 顺手做）
+
+## 2026-07-16 上午 方向转换
+
+**旧目标（demo 打磨）已收尾** —— CI / evals / lint / STATUS 同步基线全部到位；`research-goroutine` 意外转绿（详见 2026-07-16 凌晨节 + memory `llm-eval-needs-multiple-samples`）。
+
+**新目标（workbuddy 产品 + 工业级实践载体）** —— 项目**从 demo 演化为 workbuddy 类产品**：页面上配置 subagent / skill / MCP，并且**用它作为工业级 AI 开发实践的载体**：
+
+- 每个特性走 **spec → ADR → feature branch → PR → adversarial code review → eval → 合入** 完整流程
+- `main` 分支 branch protection，不允许直推
+- 前端 UI 在 Phase 4 一次性升级 shadcn/ui + Tailwind
+- 学习优先，产品可以"能用但不完善"
+
+**Phase 划分**（详见 vision spec）：
+1. ✅ **Phase 0**（07-16 完成）：元流程 setup（spec / ADR 模板 + 回溯 ADR + PR 模板 + branch protection + vision spec）—— **PR #5 合入 main `6a52da5`**
+2. 🟡 **Phase 1**（07-16 起手，spec 待 review）：MCP 声明式加载（yaml + driver 层）
+3. Phase 2：Registry 可变 + Host 原子 swap（`Unregister` / `atomic.Pointer`）
+4. Phase 3：REST API（`/api/agents` `/api/mcp` `/api/skills`）
+5. Phase 4：配置 UI（shadcn/ui + Tailwind）
+6. Phase 5：OTel trace + Langfuse
+
+**Phase 0 产出**（squash-merged 到 main，commit `6a52da5`）：
+- `docs/specs/_template.md` + `docs/adr/_template.md`
+- `docs/adr/001-monorepo-single-binary.md`
+- `docs/adr/002-eino-as-orchestrator.md`
+- `docs/adr/003-distroless-runtime.md`
+- `docs/adr/004-branch-protection-on-main.md`（仓库 Private → Public 决策 + protection 配置细节）
+- `docs/specs/workbuddy-vision.md`
+- `.github/pull_request_template.md`
+- **`main` 分支 branch protection 生效**（配置详见 ADR-004；实测直推被拒）
+- STATUS.md + CLAUDE.md 同步（硬规矩生效）
+
+**已知问题 #1 / #2 归属调整**（保持不变）：
+- #1（list_dir 返回 [] 因为容器无 WORKDIR）→ Phase 1 MCP 声明式加载时顺带修（yaml 里配 `default_root`），无需单独 Dockerfile 改动
+- #2（filesystem MCP 在容器没起因为没 npx）→ Phase 1 里改为**声明式 enabled_if gate**；本地开发 `ENABLE_FS_MCP=1` 自动 enable，容器无此 env 自动 disable，语义清晰不再"warn-and-continue"
 
 ## 2026-07-16 凌晨 变更
 
@@ -23,11 +213,11 @@
 
 **Runtime 未变**（只改 CI workflow + 配 GH secret），无需重部署。
 
-**尚未做（下一次会话优先级）：**
-1. **已知问题 #3 归档为"待长期观察"** —— 当前 baseline 全绿，改 prompt 的动机没了。定期 rerun 一次 evals 观察 `research-goroutine` 是否会因 Ark 侧波动重新翻红。
-2. Dockerfile 加 `WORKDIR /data` + 样例文件（修已知问题 #1，list_dir 返回 `[]`）
-3. 决定 filesystem MCP 在容器里怎么处理（sidecar / 放弃，即已知问题 #2）
-4. GH Actions 各 action 升级到 Node 24 兼容版本，消 deprecation warning
+**尚未做（下一次会话优先级 —— 07-16 上午方向转换后已废止，重排见 07-16 上午节 Phase 1+）：**
+1. ~~已知问题 #3 归档为"待长期观察"~~ ✅ 已归档，见 07-16 上午方向转换
+2. ~~Dockerfile 加 `WORKDIR /data` + 样例文件~~ → 归到 Phase 1 里 MCP yaml `default_root` 声明式解决
+3. ~~决定 filesystem MCP 在容器里怎么处理~~ → 归到 Phase 1 `enabled_if` gate
+4. GH Actions 各 action 升级到 Node 24 兼容版本，消 deprecation warning（低优先，后续 PR 顺手做）
 5. 本机装 `golangci-lint` + `lefthook`（CI 兜底后 nice-to-have）
 6. Ark 控制台老 API Key 排查阶段的临时 key 是否 revoke
 
@@ -133,10 +323,12 @@
 
 ## 已知问题（未修，优先级低）
 
-### 1. list_dir 返回 `[]`
+### 1. list_dir 返回 `[]` ✅ fixed (2026-07-17)
 Dockerfile 没 `WORKDIR`，server 的 CWD 是 `/`，distroless 镜像里 `/` 极简，`list_dir({"path": "."})` 拿不到有意义的内容。**修法：** Dockerfile 里加 `WORKDIR /data` + 一个 `RUN mkdir /data && ...` 塞几个样例文件；或前端默认传具体路径。
 
-### 2. filesystem MCP 在容器里没起
+**Phase 1 已修**：`mcp/mcp.yaml` 里 `default_root: /agents` 兜底，distroless 里 `list_dir` 无参调用现在返回 `agents/` 目录内容。保留本条作为决策历史。
+
+### 2. filesystem MCP 在容器里没起 ✅ fixed (2026-07-17)
 Distroless 镜像没 `node` / `npx`，`fs.read_file` 那类外部 MCP 工具注册失败，日志明说：
 ```
 tools: optional tool "fs.read_file" not registered (external MCP disabled?), skipping
@@ -145,6 +337,8 @@ tools: optional tool "fs.read_file" not registered (external MCP disabled?), ski
 - 换基础镜像塞进 node（镜像会大一倍）
 - 起个 sidecar container 跑 node MCP，Go 通过 stdio/socket 连
 - 在容器里只用 inproc MCP，接受这个限制
+
+**Phase 1 语义清晰化**：不再 warn-and-continue，容器里显式打印 `mcp: fs disabled (enabled_if=env:ENABLE_FS_MCP=1, source=/mcp/filesystem.yaml)`。"没起"从"bug 感"变成"声明式关闭"。保留本条作为决策历史。
 
 ### 3. host 路由把第三条给了 ops 而不是 research
 本地也有此风险 —— 是 host prompt / 工具描述的语义问题，跟部署无关，独立调优。
@@ -267,6 +461,11 @@ $env:ARK_MODEL_ID="ep-20260609204306-xj4xt"
 | 2026-07-15 | `golangci-lint-action` pin 到 `version: v2.12`（不是 `v2.0`） | action 用 `vX.Y` 系列 pin 会拉该系列最老 patch（v2.0.2 = Go 1.24 编），拒绝加载 `go: "1.26"` 的 config。升级到 v2.12（2026-05 release，Go 1.26 编）才能真正跑规则 |
 | 2026-07-16 | GH Actions secret 走 `gh secret set --body '值'` 明文传参，**不用** `printf \| gh --body -` stdin 管道 | 第一次用 stdin 管道写入后 CI 侧 401 `The API key format is incorrect`，本地同 key 正常，暗示 stdin 通道混入了额外字符。明文参数最不容易翻车 |
 | 2026-07-16 | `evals.yml` 用 `2>&1 \| tee` + `$PIPESTATUS[0]` 而不是裸 `\| tee` | `cmd/evals` 用 `log.Printf` → stderr，裸 tee 只抓 stdout → artifact 空；tee 恒 0 → workflow 假绿。这个坑跟 `ci.yml` smoke test 那步同源，写第二次是抄错了模式 |
+| 2026-07-16 | 仓库从 Private 转 Public 以启用 `main` 分支 branch protection | GitHub Free 私有仓库不支持 branch protection（`gh api` 实测 403 Upgrade to Pro）；升 Pro $4/mo 或走软性 hook 都 dominated 于"转 Public + 免费 protection"。代码本身是学习成果，公开顺带丰富贡献日历。详见 [ADR-004](docs/adr/004-branch-protection-on-main.md) |
+| 2026-07-16 | branch protection `contexts` 用 job display name（`build + vet` / `golangci-lint`）不是 job key | GitHub 匹配 required check 用的是 `jobs.<x>.name:` 值。初版用 job key `build-and-test` / `lint` 时 `app_id: null`，说明没匹配上，protection 形同虚设。修正后 `app_id: 15368` 出现，adversarial test 才真通过。已存 memory `github-required-check-name-uses-display-name` |
+| 2026-07-16 | 项目走完整 spec → ADR → PR → protection 流程首用 = PR #5 | Phase 0 元流程 setup 自己走一遍新流程验证闭环。squash-merge 保持 main history 一 PR 一 commit；`--delete-branch` 自动清理；`git remote prune` 后 local main 干净 |
+| 2026-07-17 | MCP driver 抽象 + `mcp/*.yaml` 声明式加载 | vision Phase 1 落地：加 MCP server = 加 yaml 不改 Go；enabled_if 语义清晰；fail-fast 替代 warn-and-continue。详见 [ADR-005](docs/adr/005-mcp-driver-abstraction.md) |
+| 2026-07-17（晚）| Registry 可变 + Host 原子 swap（Supervisor 抽象 + atomic.Pointer）| vision Phase 2 落地：为 Phase 3 REST API + Phase 4 UI 铺路。Rebuild 事务化 + 旧引用跑完不 drain。详见 [ADR-006](docs/adr/006-registry-mutation-host-swap.md) |
 
 ---
 
@@ -274,7 +473,7 @@ $env:ARK_MODEL_ID="ep-20260609204306-xj4xt"
 
 - [x] ~~项目是否建 Git 仓库~~ → 已建（07-10）
 - [x] ~~上 k8s~~ → 完成（07-11）
-- [x] ~~推 GitHub 远端仓库~~ → 完成（07-11 Private）
+- [x] ~~推 GitHub 远端仓库~~ → 完成（07-11 Private → 07-16 转 Public）
 - [x] ~~加 `CLAUDE.md` / 工程化 roadmap~~ → 完成（07-14）
 - [x] ~~路由回归 eval 骨架~~ → 完成（07-14，红色 case 待实测）
 - [x] ~~`golangci-lint` / `lefthook` 配置~~ → 配置起草完成（07-14），本机工具链未装
@@ -282,7 +481,15 @@ $env:ARK_MODEL_ID="ep-20260609204306-xj4xt"
 - [x] ~~首次 CI run 后按 report 调 `.golangci.yml`~~ → 完成（07-15 傍晚，run `29411625130` 全绿）
 - [x] ~~GitHub Secrets 加 `ARK_API_KEY` / `ARK_MODEL_ID`，手动触发 evals workflow~~ → 完成（07-16 凌晨，run `29466566000` 6/6 全绿）
 - [x] ~~`go run ./cmd/evals` 实测（或走 CI），`research-goroutine` 转绿~~ → 完成（意外转绿，n=1 baseline 不代表长期）
-- [ ] 装 `golangci-lint` + `lefthook`，跑第一次 lint 并按 report 调配置
-- [ ] Dockerfile 加 WORKDIR + 样例文件（fix list_dir）
-- [ ] 决定 filesystem MCP 在容器里怎么处理（sidecar / 放弃）
-- [ ] 老 API Key 排查阶段建的临时 key 是否 revoke
+- [x] ~~Phase 0 元流程 setup + branch protection~~ → 完成（07-16 傍晚，PR #5 合入 main `6a52da5`）
+- [x] **Phase 1 spec Accepted + ADR-005 起草 + 代码实现完成（2026-07-17）**
+- [x] **Phase 2 spec Accepted + ADR-006 起草 + 代码实现完成（2026-07-17 晚）**
+- [ ] **Phase 1 PR 走 branch protection 流程合入 main**（push feature branch + evals 本地/CI 结果贴 PR 描述）
+- [ ] **Phase 2 PR 走 branch protection 合入 main**（push + evals 结果贴 PR）
+- [ ] **Phase 3 spec 起草：REST API `/api/agents` `/api/mcp` `/api/skills` CRUD + Rebuild 触发**
+- [ ] ~~Dockerfile 加 WORKDIR + 样例文件（fix list_dir）~~ → 归到 Phase 1 里 `default_root` yaml 字段解决
+- [ ] ~~决定 filesystem MCP 在容器里怎么处理（sidecar / 放弃）~~ → 归到 Phase 1 `enabled_if` gate 声明式表达
+- [ ] Dependabot 6 CVE 清理（Phase 1 完成后单独 fix 分支；全部 dev-only 或 transitive，不影响 runtime）
+- [ ] 装 `golangci-lint` + `lefthook`，跑第一次 lint 并按 report 调配置（CI 兜底后 nice-to-have）
+- [ ] `.github/workflows/*.yml` 里几个 action version 升级消 deprecation warning（低优先，后续 PR 顺手）
+- [ ] 老 API Key 排查阶段建的临时 key 是否 revoke（转 Public 后建议做，多一层保险）
