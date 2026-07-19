@@ -180,12 +180,12 @@ func copyDir(src, dst string) {
 		}
 		dstFile, err := os.Create(dstPath)
 		if err != nil {
-			srcFile.Close()
+			_ = srcFile.Close()
 			log.Fatalf("copy-configs: create %s: %v", dstPath, err)
 		}
 		_, err = io.Copy(dstFile, srcFile)
-		srcFile.Close()
-		dstFile.Close()
+		_ = srcFile.Close()
+		_ = dstFile.Close()
 		if err != nil {
 			log.Fatalf("copy-configs: copy %s: %v", srcPath, err)
 		}
