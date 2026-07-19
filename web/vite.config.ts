@@ -1,8 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
     proxy: {
@@ -17,5 +18,10 @@ export default defineConfig({
     // Produce plain relative-path assets so the Go embed serves them from /.
     outDir: 'dist',
     emptyOutDir: true,
+  },
+  resolve: {
+    alias: {
+      '@': '/src',
+    },
   },
 })
