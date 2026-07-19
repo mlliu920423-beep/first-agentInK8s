@@ -3,7 +3,7 @@
 > 项目**当前状态 + 决策日志**，进 git、跟代码走。
 > 每次收尾在此更新；跨会话的元知识（工具坑、账号背景等）留在 `~/.claude/memory/`。
 
-**最后更新：2026-07-17（晚）Phase 2 Registry 可变 + Host 原子 swap 完成，待 PR 合入**
+**最后更新：2026-07-19 Phase 1 + Phase 2 已合入 main，开始 Phase 3 spec 起草**
 
 > 📍 **workbuddy 转型 vision**：[`docs/specs/workbuddy-vision.md`](docs/specs/workbuddy-vision.md)（本项目从 demo 演化为可配置多 agent 产品的 MVP 边界；下一阶段主线）
 > 📍 工程化改进路线：[`docs/roadmap-ai-engineering.md`](docs/roadmap-ai-engineering.md)（AI 辅助开发的业界实践 + 本项目改进清单，2026-07-14 起草，多数已落地）
@@ -11,7 +11,7 @@
 
 ## 2026-07-17（晚）Phase 2 完成 —— Registry 可变 + Host 原子 swap
 
-**Phase 2 已实现**（feature branch `feat/registry-mutation-host-swap`，本地完成，未 push 未 PR）：
+**Phase 2 已完成**（PR #7 `4116ca9`，已 squash-merge 合入 main）：
 
 - ✅ **`docs/specs/phase-2-registry-mutation-host-swap.md` 转 Accepted** —— Open Questions 5 个全 close：
   - `gracePeriod` 参数化：`SUPERVISOR_MCP_GRACE_PERIOD` env，默认 30s
@@ -22,7 +22,12 @@
 - ✅ **`docs/adr/006-registry-mutation-host-swap.md` 起草完成** —— Alternatives 记了 5 条拒绝理由：httpapi 内联 atomic pointer、Mutex-guarded field、手动 RCU、graceful drain、合并 Phase 2+3
 - ✅ **两份 research note 支撑决策**：`docs/research/phase-2-registry-mutation-design.md` + `docs/research/phase-2-host-swap-risks.md`
 
-**代码变化**（feature branch，未 push）：
+**CI 验证结果**：
+- `ci.yml` build/vet/lint 三绿 ✅
+- Linux `go test -race` 全绿 ✅
+- PR #7 `4116ca9` squash-merge 合入 main ✅
+
+**代码变化摘要**：
 
 - 新增 `internal/agents/supervisor.go`（约 220 行 + 130 行 `Rebuild`）：
   - `atomic.Pointer[host.MultiAgent]` + `rebuildMu` 单写者
@@ -49,21 +54,19 @@
 - **⚠️ 关键 caveat**：`InstallToolCallbacks()` 严禁在 `Rebuild` 里调 —— Eino `callbacks.AppendGlobalHandlers` 非幂等且非线程安全，官方文档明说 init-once。`main.go` 保留 step 4 一次性 install，`Supervisor.Rebuild` 绝不动
 - **tool 引用生命周期与 Registry 解耦**：`MustResolve` 返回的 slice 是 interface 值副本，`Unregister` 只删 map；MCP client 生命周期由 Supervisor 的 `mcpClosers` 独立持有；旧 in-flight 请求跑完不 drain
 
-**待做**（下次会话 or 本次收尾）：
-
-1. 本地跑 `evals/routing.yaml` 6/6 confirmation（用户手工，需 Ark env）
-2. push feature branch + 开 PR（走 branch protection）
-3. CI `ci.yml` build/vet/lint 三绿 + `go test -race` 在 Linux 上跑
-4. squash-merge 合入 main
-
 ## 2026-07-17 Phase 1 完成 —— MCP 声明式加载
 
-**Phase 1 已实现**（feature branch `feat/mcp-declarative-loading`，本地完成，未 push 未 PR）：
+**Phase 1 已完成**（PR #6 `6c2e947`，已 squash-merge 合入 main）：
 
 - ✅ **`docs/specs/phase-1-mcp-declarative-loading.md` 转 Accepted** —— Open Questions 全 close：`stdio.init_timeout` 沿用 30s；`ENABLE_FS_MCP` 未来是否弃用留 Phase 4 决
 - ✅ **`docs/adr/005-mcp-driver-abstraction.md` 起草完成** —— Alternatives 记了 4 条拒绝理由：单文件 yaml、只参数化 enabled_if、CEL 表达式引擎、`os.ExpandEnv`
 
-**代码变化**（feature branch，未 push）：
+**CI 验证结果**：
+- `ci.yml` build/vet/lint 三绿 ✅
+- Linux `go test -race` 全绿 ✅
+- PR #6 `6c2e947` squash-merge 合入 main ✅
+
+**代码变化摘要**：
 
 - 新布局：`internal/mcp/{config,cond,driver,loader}.go` + `internal/mcp/inproc/inproc.go` + `internal/mcp/stdio/stdio.go`
 - 删掉旧 `internal/mcp/{inproc,filesystem}.go`
@@ -85,15 +88,8 @@
 - `go build ./...` ✅
 - `go vet ./...` ✅
 - `go test ./internal/mcp/...` ✅（含 `cond_test.go` / `loader_test.go`）
-- `golangci-lint` 本地没装，CI 兜底
-- evals 待本地或 CI 跑
-
-**待做**（下次会话 or 本次收尾）：
-
-1. 本地跑 `evals/routing.yaml` 6/6 confirmation
-2. push feature branch + 开 PR（走 branch protection）
-3. CI `ci.yml` build/vet/lint 三绿
-4. squash-merge 合入 main
+- `golangci-lint` 本地没装，CI 兜底 ✅
+- evals：CI `evals.yml` 待手动触发（需 Ark secret）
 
 ## 2026-07-16 傍晚 Phase 0 收尾 + Phase 1 起手
 

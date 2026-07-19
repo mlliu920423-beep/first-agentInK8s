@@ -121,6 +121,15 @@ func (s *Supervisor) Current() *host.MultiAgent {
 	return s.current.Load()
 }
 
+// Reload is the API-friendly alias for Rebuild. It reloads agent configs
+// and MCP servers from disk and atomically swaps in a fresh host.
+// Transactional: on any failure the old host keeps serving.
+//
+// See Rebuild for concurrency and error-handling semantics.
+func (s *Supervisor) Reload(ctx context.Context) error {
+	return s.Rebuild(ctx)
+}
+
 // Rebuild reloads agent configs + MCP servers and atomically swaps in
 // a fresh *host.MultiAgent. Transactional: on any failure the old host
 // keeps serving and the shared Registry is not mutated.

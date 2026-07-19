@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/bigmay/first-agentink8s/internal/agents"
+	"github.com/bigmay/first-agentink8s/internal/configstore"
 	"github.com/bigmay/first-agentink8s/internal/httpapi"
 	"github.com/bigmay/first-agentink8s/internal/llm"
 	"github.com/bigmay/first-agentink8s/internal/tools"
@@ -86,22 +87,26 @@ func main() {
 	// non-thread-safe. See docs/research/phase-2-host-swap-risks.md §3.
 	httpapi.InstallToolCallbacks()
 
-	// 5. HTTP server
+	// 5. Config store (Phase 3) — backs the CRUD API
+	store, err := configstore.NewStore(agentsDir, mcpDir)
+	if err != nil {
+		log.Printf("configstore: %v", err)
+		os.Exit(1)
+	}
+
+	// 6. HTTP server — uses httprouter.NewRouter() for all routes:
+	// /healthz, /api/chat, /api/agents/*, /api/mcp/*, /api/reload, /* SPA
 	distFS, err := webassets.FS()
 	if err != nil {
 		log.Printf("webassets: %v", err)
 		os.Exit(1)
 	}
-	apiSrv := &httpapi.Server{Sup: sup}
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", httpapi.Healthz)
-	mux.HandleFunc("/api/chat", apiSrv.HandleChat)
-	mux.Handle("/", httpapi.StaticHandler(distFS))
+	apiSrv := &httpapi.Server{Sup: sup, Store: store}
+	router := httpapi.NewRouter(apiSrv, distFS)
 
 	server := &http.Server{
 		Addr:              ":" + port,
-		Handler:           mux,
+		Handler:           router,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
