@@ -5,7 +5,9 @@
 //  2. Tool registry   (built-in Go tools)
 //  3. Supervisor      (loads MCP servers + agent configs + specialists + host)
 //  4. Global tool callback hook  (drives SSE tool_call/tool_result events)
-//  5. HTTP server     (/api/chat SSE, /healthz, / static)
+//  5. Tracing         (Langfuse — no-op unless LANGFUSE_ENABLED=1)
+//  6. Config store    (Phase 3 — backs the CRUD API)
+//  7. HTTP server     (/api/chat SSE, /healthz, / static, /api/agents, /api/mcp)
 //
 // On SIGINT/SIGTERM: shutdown HTTP server, then Supervisor.Shutdown
 // closes every MCP client.
@@ -32,6 +34,7 @@ import (
 	"github.com/bigmay/first-agentink8s/internal/httpapi"
 	"github.com/bigmay/first-agentink8s/internal/llm"
 	"github.com/bigmay/first-agentink8s/internal/tools"
+	"github.com/bigmay/first-agentink8s/internal/tracing"
 	"github.com/bigmay/first-agentink8s/internal/webassets"
 
 	// Blank imports register the transport drivers with the mcp package.
@@ -87,14 +90,26 @@ func main() {
 	// non-thread-safe. See docs/research/phase-2-host-swap-risks.md §3.
 	httpapi.InstallToolCallbacks()
 
-	// 5. Config store (Phase 3) — backs the CRUD API
+	// 5. Tracing (Phase 5) — Langfuse observability. No-op unless
+	// LANGFUSE_ENABLED=1 and auth env vars are set.
+	tracingFlush, tracingEnabled, err := tracing.Setup()
+	if err != nil {
+		log.Printf("tracing: %v", err)
+		os.Exit(1)
+	}
+	if tracingEnabled {
+		defer tracingFlush()
+		log.Printf("tracing: Langfuse flusher installed")
+	}
+
+	// 6. Config store (Phase 3) — backs the CRUD API
 	store, err := configstore.NewStore(agentsDir, mcpDir)
 	if err != nil {
 		log.Printf("configstore: %v", err)
 		os.Exit(1)
 	}
 
-	// 6. HTTP server — uses httprouter.NewRouter() for all routes:
+	// 7. HTTP server — uses httprouter.NewRouter() for all routes:
 	// /healthz, /api/chat, /api/agents/*, /api/mcp/*, /api/reload, /* SPA
 	distFS, err := webassets.FS()
 	if err != nil {
