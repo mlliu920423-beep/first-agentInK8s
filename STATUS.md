@@ -3,11 +3,55 @@
 > 项目**当前状态 + 决策日志**，进 git、跟代码走。
 > 每次收尾在此更新；跨会话的元知识（工具坑、账号背景等）留在 `~/.claude/memory/`。
 
-**最后更新：2026-07-19 Phase 1 + Phase 2 已合入 main，开始 Phase 3 spec 起草**
+**最后更新：2026-07-19 Phase 3 REST API CRUD + 持久化 + 热重载 完成，已合入 main**
 
 > 📍 **workbuddy 转型 vision**：[`docs/specs/workbuddy-vision.md`](docs/specs/workbuddy-vision.md)（本项目从 demo 演化为可配置多 agent 产品的 MVP 边界；下一阶段主线）
 > 📍 工程化改进路线：[`docs/roadmap-ai-engineering.md`](docs/roadmap-ai-engineering.md)（AI 辅助开发的业界实践 + 本项目改进清单，2026-07-14 起草，多数已落地）
 > 📍 架构决策记录：[`docs/adr/`](docs/adr/)（每决策一份，从 001 单二进制 / 002 Eino / 003 distroless / 004 branch protection 起）
+
+## 2026-07-19 Phase 3 完成 —— REST API CRUD + 配置持久化 + 热重载
+
+**Phase 3 已完成**（PR #10 `bda9429`，squash-merge 合入 main）：
+
+**spec 与 ADR 产出**：
+- ✅ **`docs/specs/phase-3-rest-api-crud.md` 转 Accepted** —— 4 种持久化方案对比（文件 vs sqlite vs 纯内存 vs etcd），选定文件系统 yaml 持久化
+- ✅ **`docs/adr/007-rest-api-persistence.md` 起草完成** —— 5 个 Open Questions 全 close
+
+**代码变化摘要**（13 files, +1567/-36）：
+- 新增 `internal/configstore/store.go` + `store_test.go`：Agents / MCP CRUD，原子写 + 软删除，5 个单元测试全部 PASS
+- 新增 `internal/httpapi/api.go` + `routes.go`：11 个 endpoint handler + httprouter 统一路由注册
+- 修改 `internal/mcp/config.go`：暴露 `ParseConfigForAPI` + `ValidateForAPI`
+- 修改 `internal/agents/supervisor.go`：新增 `Reload(ctx)` 作为 `Rebuild()` 的 API 友好别名
+- 修改 `cmd/server/main.go` + `internal/httpapi/sse.go`：接入 configstore 和新路由
+
+**API 列表**（11 个 endpoint）：
+| Method | Path | 说明 |
+|---|---|---|
+| GET/POST | `/api/chat` | SSE 聊天（不变） |
+| GET | `/api/agents` | 列出所有 agent |
+| GET | `/api/agents/:name` | 获取单个 agent |
+| POST | `/api/agents` | 创建 agent（自动 reload） |
+| PUT | `/api/agents/:name` | 更新 agent（自动 reload） |
+| DELETE | `/api/agents/:name` | 软删除 agent（自动 reload） |
+| GET | `/api/mcp` | 列出所有 MCP server |
+| GET | `/api/mcp/:name` | 获取单个 MCP |
+| POST | `/api/mcp` | 创建 MCP（自动 reload） |
+| PUT | `/api/mcp/:name` | 更新 MCP（自动 reload） |
+| DELETE | `/api/mcp/:name` | 软删除 MCP（自动 reload） |
+| POST | `/api/reload` | 手动触发热加载 |
+
+**CI 验证结果**：
+- `go build ./...` ✅ | `go vet ./...` ✅ | `go test ./...` ✅ 全绿
+- `golangci-lint` CI 全绿 ✅ | Linux `go test -race` CI 全绿 ✅
+
+**关键设计决策**：
+- **配置持久化走文件系统**：原子写 + 软删除，单二进制零外部依赖
+- **CRUD + Reload 绑定**：POST/PUT/DELETE 自动调 `Supervisor.Reload()`，失败返回 500 但不影响旧服务
+- **向后兼容**：没有 API 调用时，行为跟 Phase 2 完全一样
+
+**待做**：
+- [ ] Phase 4：前端配置 UI（shadcn/ui + Tailwind + react-router-dom）
+- [ ] evals 补充 Phase 3 相关 case
 
 ## 2026-07-17（晚）Phase 2 完成 —— Registry 可变 + Host 原子 swap
 
