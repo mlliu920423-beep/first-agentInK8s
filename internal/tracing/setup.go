@@ -14,8 +14,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/cloudwego/eino/callbacks"
 	"github.com/cloudwego/eino-ext/callbacks/langfuse"
+	"github.com/cloudwego/eino/callbacks"
 )
 
 // Setup initializes the Langfuse callback handler and registers it globally.
@@ -43,6 +43,6 @@ func Setup() (flusher func(), enabled bool, err error) {
 	})
 
 	callbacks.AppendGlobalHandlers(cbh)
-	log.Printf("tracing: Langfuse enabled, host=%s", host)
+	log.Printf("tracing: Langfuse enabled, host=%q", host)
 	return flusher, true, nil
 }
