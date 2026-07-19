@@ -11,17 +11,31 @@ spec:
     metadata:
       labels: { app: eino-demo }
     spec:
+      # Init container copies boot configs from read-only image paths
+      # to writable emptyDir volumes so the Phase 3 CRUD API can write.
+      initContainers:
+        - name: copy-configs
+          image: eino-demo:local
+          imagePullPolicy: Never
+          command: ["/server", "--copy-configs"]
+          volumeMounts:
+            - name: agents-data
+              mountPath: /data/agents
+            - name: mcp-data
+              mountPath: /data/mcp
       containers:
         - name: server
           image: eino-demo:local
-          imagePullPolicy: Never          # local-only image; never try to pull from a registry
+          imagePullPolicy: Never
           ports:
             - containerPort: 8080
           env:
             - name: PORT
               value: "8080"
             - name: AGENTS_DIR
-              value: "/agents"
+              value: "/data/agents"
+            - name: MCP_DIR
+              value: "/data/mcp"
             - name: ARK_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -32,6 +46,11 @@ spec:
                 secretKeyRef:
                   name: ark-secret
                   key: ARK_MODEL_ID
+          volumeMounts:
+            - name: agents-data
+              mountPath: /data/agents
+            - name: mcp-data
+              mountPath: /data/mcp
           readinessProbe:
             httpGet: { path: /healthz, port: 8080 }
             initialDelaySeconds: 2
@@ -40,3 +59,8 @@ spec:
             httpGet: { path: /healthz, port: 8080 }
             initialDelaySeconds: 15
             periodSeconds: 20
+      volumes:
+        - name: agents-data
+          emptyDir: {}
+        - name: mcp-data
+          emptyDir: {}
