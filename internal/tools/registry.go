@@ -38,6 +38,30 @@ func (r *Registry) Register(name string, t tool.BaseTool) error {
 	return nil
 }
 
+// Unregister removes name from the registry.
+//
+// Idempotent: if name is not registered, returns nil (with a debug log
+// line). Rationale — Supervisor.Rebuild flows may call Unregister on
+// names that never got registered (e.g. an fs.* tool when filesystem
+// MCP is disabled). Making this a hard error would force every caller
+// to wrap it in `if _, ok := r.Get(name); ok { r.Unregister(name) }`.
+//
+// IMPORTANT: Unregister only removes the map entry. Any []tool.BaseTool
+// slice previously returned by MustResolve keeps its references and
+// remains invokable — the tool's underlying resources (e.g. MCP client)
+// are owned by whoever holds the driver's io.Closer, not by the
+// Registry. See docs/adr/006-registry-mutation-host-swap.md.
+func (r *Registry) Unregister(name string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.m[name]; !ok {
+		log.Printf("tools: Unregister(%q) — not registered, no-op", name)
+		return nil
+	}
+	delete(r.m, name)
+	return nil
+}
+
 // Get returns the tool and whether it exists.
 func (r *Registry) Get(name string) (tool.BaseTool, bool) {
 	r.mu.RLock()

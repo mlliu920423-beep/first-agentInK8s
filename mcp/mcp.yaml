@@ -1,0 +1,21 @@
+# Demo in-process MCP server.
+#
+# Provides `mcp.echo` (round-trip smoke test) and `mcp.list_dir`
+# (directory listing) via the in-proc driver. `builtin-demo` is the
+# only inproc provider for MVP; adding new inproc providers means
+# adding Go code in internal/mcp/inproc/, same tier as built-in tools.
+#
+# Related: docs/specs/phase-1-mcp-declarative-loading.md,
+# docs/adr/005-mcp-driver-abstraction.md
+name: mcp
+transport: inproc
+provider: builtin-demo
+enabled_if: always
+
+# Fallback for `list_dir({"path": ""})` — resolved relative to the process
+# CWD, so it works both locally (running from repo root: `./agents`) and in
+# the distroless container (CWD = `/`, so this is effectively `/agents`,
+# which Dockerfile guarantees exists via `COPY agents/ /agents/`).
+# Without this the distroless runtime's near-empty `/` returned an empty
+# array (STATUS.md known issue #1).
+default_root: agents

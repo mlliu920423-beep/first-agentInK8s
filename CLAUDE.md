@@ -2,6 +2,7 @@
 
 > 项目的 AI 会话上下文：任何 AI（Claude Code / Cursor / Codex / ChatGPT）打开这个项目都读这份。
 > 目标是**把踩过的坑固化下来**，别让下一次会话再撞一遍。
+> **2026-07-16 起项目转向 workbuddy 演化 + 工业级实践载体** —— 每个特性走 spec → ADR → feature branch → PR → eval → 合入 全流程。**新 AI 会话必读 `docs/specs/workbuddy-vision.md`**。
 > 深度设计原理看 [`ARCHITECTURE.md`](ARCHITECTURE.md)；当前状态和已知问题看 [`STATUS.md`](STATUS.md)；工程化改进路线看 [`docs/roadmap-ai-engineering.md`](docs/roadmap-ai-engineering.md)。
 
 ---
@@ -41,21 +42,25 @@ internal/
   llm/               Ark ChatModel 工厂（单点，所有 agent 共享一个实例）
   tools/             Tool Registry + 内置技能（calculator / weather / current_time）
   agentcfg/          agents/*.yaml 加载器
-  mcp/               inproc + 外部 stdio MCP 桥接（→ Registry）
-  agents/            react.Agent → host.Specialist + Host + DefaultHostPrompt
+  mcp/               MCP 声明式加载：config / cond / driver / loader + inproc/ + stdio/ 子包
+  agents/            react.Agent → host.Specialist + Host + DefaultHostPrompt；Supervisor 抽象持 atomic.Pointer[MultiAgent] 管热替换
   httpapi/           /api/chat SSE + /healthz + 静态嵌入
   webassets/         //go:embed all:dist（前端产物必须放这）
 agents/*.yaml        Specialist 声明式配置（每个 yaml 一个 agent）
+mcp/*.yaml           MCP server 声明（每个 yaml 一个 server，跟 agents/ 对称）
 evals/               路由回归 case 集（routing.yaml + README.md）
 web/                 React + Vite 前端源码
 k8s/                 deployment / service / secret 模板
-docs/                路线图、ADR（未来）、spec（未来）
+docs/                路线图、ADR（`docs/adr/`）、spec（`docs/specs/`）
+                     两份 _template.md 是模板，写新 spec / ADR 时从模板 copy
 .github/workflows/   CI（ci.yml 自动跑 build/vet/lint；evals.yml 手动跑）
 Dockerfile           三阶段：node → go → distroless
 ```
 
 **核心约束：**
 - **加新 sub-agent 的常规路径 = 只加 YAML**（如果工具已存在）。不要改 `main.go` / `agents/build.go`。
+- **改 host / specialist / MCP 配置的运行时热替换路径**：`agents.Supervisor.Rebuild(ctx)` 会读全部 yaml 重建 host，用 atomic pointer 原子 swap，旧请求跑完不 drain。Phase 2 只暴露给单元测试；Phase 3 会挂 REST。**关键 caveat：Rebuild 不能调 `InstallToolCallbacks()`**（Eino `callbacks.AppendGlobalHandlers` 非幂等且非线程安全，只在 `cmd/server/main.go` step 4 一次性调）。详见 [`docs/adr/006-registry-mutation-host-swap.md`](docs/adr/006-registry-mutation-host-swap.md) / [`docs/specs/phase-2-registry-mutation-host-swap.md`](docs/specs/phase-2-registry-mutation-host-swap.md)。
+- **加新 MCP server 的常规路径 = 只加 `mcp/<name>.yaml`**（如果 transport 已支持：`inproc` 内建 provider 或 `stdio` 外部子进程）。加新 transport 类型 = 新增 `internal/mcp/<transport>/` 子包实现 `Driver` interface，loader 不改。
 - **加新内置工具** = `internal/tools/xxx.go` + 在 `registry.go` 的 `RegisterBuiltins` 循环里加一行。
 - **Host 路由 prompt** 是 `agents/build.go:101` 的 `DefaultHostPrompt` 常量，不是 YAML。改路由行为改这里。
 - **前后端事件契约**在两处独立声明（`internal/httpapi/events.go` + `web/src/sseClient.ts`），加事件类型两边都要改，暂时没 codegen。
@@ -72,8 +77,10 @@ Dockerfile           三阶段：node → go → distroless
 - `ARK_BASE_URL` / `ARK_REGION` — 覆盖默认
 - `PORT` — 默认 8080
 - `AGENTS_DIR` — 默认 `agents`（容器里 `/agents`）
+- `MCP_DIR` — 默认 `mcp`（容器里 `/mcp`）
 - `ENABLE_FS_MCP=1` — 启用外部 filesystem MCP（**需要 `npx` 在 PATH**，distroless runtime 里没有，只有本地开发有意义）
 - `FS_MCP_ROOT` — 外部 MCP 能访问的根目录，缺就用 CWD
+- `SUPERVISOR_MCP_GRACE_PERIOD` — 默认 `30s`。Supervisor.Rebuild 成功后旧 MCP driver 延迟 Close 的等待时间，让 in-flight 请求跑完
 
 ---
 
@@ -178,16 +185,25 @@ gh run watch  # 看最新一次 run
 
 ## AI 助手做事的偏好
 
-1. **改代码前先看 `STATUS.md` 和 `ARCHITECTURE.md`**。ARCHITECTURE 里已经把每个模块"为什么这么设计"写清楚了，别推翻已有约定。
-2. **大改动先写 spec**：在 `docs/specs/<feature-name>.md` 描述现状 / 目标 / 方案 A/B/C / 选定方案 / 验收标准，再动代码。
-3. **架构级决策记录在 `docs/adr/`**（还没建目录，第一次写就建）。ADR = Architecture Decision Record，一决策一文件。
-4. **改 host prompt / specialist description 后必须跑 `evals/routing.yaml`**，别只靠"手点浏览器验证"。
-5. **加事件类型时改两处**：`internal/httpapi/events.go` 和 `web/src/sseClient.ts`（+ `App.tsx` 里 `applyEvent` 的 switch）。
-6. **不要**：
+> **2026-07-16 起硬规矩**：项目从 demo 转向 workbuddy 演化 + 工业级实践载体（见 `docs/specs/workbuddy-vision.md`）。以下条目从"建议"提升为"规矩"，除非 spec 明说例外，否则**每次开工都必须走这个流程**。
+
+1. **每次会话开头必读**：`STATUS.md`（当前状态）+ `docs/specs/` 目录列表（尤其 `workbuddy-vision.md`）+ `ARCHITECTURE.md`（架构原理）。不要跳过。
+2. **【硬规矩】大改动必须先写 spec**：在 `docs/specs/<feature-name>.md`（用 `docs/specs/_template.md` 模板）描述 Context / Goals / Options / Decision / Acceptance Criteria / Risks，用户 review 通过后再动代码。**"trivial 改动"** 定义：改一个 typo / 一个日志字符串 / 一个 CI 步骤内 flag。**其他所有的都是非 trivial**。
+3. **【硬规矩】架构级决策必须写 ADR**：`docs/adr/00X-<slug>.md`（用 `docs/adr/_template.md` 模板）。ADR 触发条件：技术选型 / 数据模型 / 并发模型 / 依赖引入 / breaking behavior change。
+4. **【硬规矩】不直推 `main`**：每个特性一个 feature branch（命名 `feat/<slug>` / `fix/<slug>` / `docs/<slug>`），走 PR 流程。PR 描述用 `.github/pull_request_template.md` 模板。**GitHub `main` 分支已设 branch protection**（见 [`docs/adr/004-branch-protection-on-main.md`](docs/adr/004-branch-protection-on-main.md)：仓库为此从 Private 转 Public），直推会被拒。
+5. **改 host prompt / specialist description 后必须跑 `evals/routing.yaml`**，别只靠"手点浏览器验证"。CI 已把 evals 作为可选门槛，改动路由 / prompt 相关代码时 PR 描述里明确本地/CI evals 结果。
+6. **加事件类型时改两处**：`internal/httpapi/events.go` 和 `web/src/sseClient.ts`（+ `App.tsx` 里 `applyEvent` 的 switch）。
+7. **改 MCP 相关的约束**：加 MCP server = 加 `mcp/<name>.yaml`；加 transport 类型 = 加 `internal/mcp/<name>/` 子包 + 顶层 `cmd/server/main.go` 加 blank import；`enabled_if` 支持 `always` / `env:VAR` / `env:VAR=v` 三种，其他写法启动 fail-fast。详见 [`docs/adr/005-mcp-driver-abstraction.md`](docs/adr/005-mcp-driver-abstraction.md) 和 [`docs/specs/phase-1-mcp-declarative-loading.md`](docs/specs/phase-1-mcp-declarative-loading.md)。
+8. **不要**：
    - 把 `mcp.` 前缀里的下划线换成横线之类的"美化"（`mcp.list_dir` 是当前 in-proc MCP server 定义的名字）
-   - 把 Registry 从"启动时静态注册"改成"运行时动态注册"（除非有明确需求，且改 `MustResolve` 的语义）
+   - ~~把 Registry 从"启动时静态注册"改成"运行时动态注册"~~ —— Phase 2 已加 `Unregister`；由 `agents.Supervisor.Rebuild` 单写者驱动。运行时**任何非 Supervisor** 代码直接调 `Unregister/Register` 是 anti-pattern
+   - **不要在 `Supervisor.Rebuild` 里调 `InstallToolCallbacks()` 或 `callbacks.AppendGlobalHandlers()`**（Eino 官方文档 init-once，非线程安全；ADR-006 §Compliance）
+   - **不要在 `HandleChat` 里多次读 `Sup.Current()`**（一个请求生命周期内 host 引用必须稳定；如需多次用 host 引用就在首行拿一次然后 pass 到子函数里）
+   - **加 MCP server 不要改 Go 代码**（Phase 1 起）—— 加 `mcp/<name>.yaml` 就够。改 Go 只发生在：加新 transport 类型 / 加新 inproc provider / driver interface 演化。
    - 在 Go 代码里硬编码 API key / endpoint id（只走 env）
-7. **代码风格**：跟着 `gofmt` + `go vet`；`golangci-lint` 已启用（配置在 `.golangci.yml`），提交前跑一次。
+   - 在 spec / ADR 还没写就动代码 —— 除非改动确实 trivial 且能一句话解释
+9. **代码风格**：跟着 `gofmt` + `go vet`；`golangci-lint` 已启用（配置在 `.golangci.yml`），提交前跑一次。
+10. **踩到新坑及时进 memory**：任何"下次会话会重踩"的坑写进 `~/.claude/projects/D--Bigmay-Projects-first-agentInK8s/memory/` 里，一坑一文件，并在 `MEMORY.md` 加一行指针。
 
 ---
 
