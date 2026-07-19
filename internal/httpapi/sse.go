@@ -16,8 +16,7 @@ import (
 	"github.com/cloudwego/eino/flow/agent/multiagent/host"
 	"github.com/cloudwego/eino/schema"
 	utilcb "github.com/cloudwego/eino/utils/callbacks"
-
-	"github.com/bigmay/first-agentink8s/internal/agents"
+	"github.com/julienschmidt/httprouter"
 )
 
 // Sink serializes events from three concurrent sources — the model token
@@ -120,11 +119,8 @@ func InstallToolCallbacks() {
 // docs/adr/006-registry-mutation-host-swap.md for the atomic swap
 // design and docs/specs/phase-2-registry-mutation-host-swap.md §Rebuild
 // for the transactional semantics.
-type Server struct {
-	Sup *agents.Supervisor
-}
-
-func (s *Server) HandleChat(w http.ResponseWriter, r *http.Request) {
+// HandleChat is the GET/POST /api/chat SSE endpoint.
+func (s *Server) HandleChat(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	// Snapshot the current host once — never re-read Sup during this
 	// request. Rebuild may swap Sup.current while we're mid-stream;
 	// that's fine, the in-flight request keeps its old *MultiAgent

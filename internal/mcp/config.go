@@ -55,6 +55,20 @@ type Config struct {
 // SourcePath returns the mcp/*.yaml path this Config came from (for logs).
 func (c *Config) SourcePath() string { return c.sourcePath }
 
+// ValidateForAPI checks that the Config is well-formed: required fields are
+// present, transport-specific fields are correctly scoped, enabled_if
+// grammar is valid. This is the same validation that runs at boot time.
+func (c *Config) ValidateForAPI() error {
+	return c.validate()
+}
+
+// ParseConfigForAPI parses raw yaml bytes into a Config, applies ${env:VAR}
+// expansion, and runs validation. This is exactly what happens at boot time
+// in the loader.
+func ParseConfigForAPI(sourcePath string, raw []byte) (Config, error) {
+	return parseConfig(sourcePath, raw)
+}
+
 // parseConfig reads a single yaml file into a Config, applies expansion of
 // ${env:VAR} / ${env:VAR:-default} references in stringy fields, and
 // validates the result. `enabled_if` is NOT evaluated here — that happens
