@@ -22,10 +22,12 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -46,6 +48,16 @@ import (
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+
+	// --copy-configs mode: copies boot configs from read-only image paths
+	// to writable directories. Used by the k8s init container so that the
+	// Phase 3 CRUD API can write back to disk. Only works in k8s where
+	// /data/agents and /data/mcp are emptyDir volumes.
+	if len(os.Args) > 1 && os.Args[1] == "--copy-configs" {
+		copyDir("/agents", "/data/agents")
+		copyDir("/mcp", "/data/mcp")
+		return
+	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
@@ -145,6 +157,40 @@ func main() {
 		log.Printf("supervisor shutdown: %v", err)
 	}
 	log.Printf("bye")
+}
+
+// copyDir copies files from src to dst. Used by --copy-configs mode.
+func copyDir(src, dst string) {
+	if err := os.MkdirAll(dst, 0750); err != nil {
+		log.Fatalf("copy-configs: mkdir %s: %v", dst, err)
+	}
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		log.Fatalf("copy-configs: read %s: %v", src, err)
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		srcPath := filepath.Join(src, e.Name())
+		dstPath := filepath.Join(dst, e.Name())
+		srcFile, err := os.Open(srcPath)
+		if err != nil {
+			log.Fatalf("copy-configs: open %s: %v", srcPath, err)
+		}
+		dstFile, err := os.Create(dstPath)
+		if err != nil {
+			_ = srcFile.Close()
+			log.Fatalf("copy-configs: create %s: %v", dstPath, err)
+		}
+		_, err = io.Copy(dstFile, srcFile)
+		_ = srcFile.Close()
+		_ = dstFile.Close()
+		if err != nil {
+			log.Fatalf("copy-configs: copy %s: %v", srcPath, err)
+		}
+	}
+	log.Printf("copy-configs: copied %d files from %s to %s", len(entries), src, dst)
 }
 
 func envOr(key, fallback string) string {
