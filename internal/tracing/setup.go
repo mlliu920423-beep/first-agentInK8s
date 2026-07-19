@@ -43,6 +43,6 @@ func Setup() (flusher func(), enabled bool, err error) {
 	})
 
 	callbacks.AppendGlobalHandlers(cbh)
-	log.Printf("tracing: Langfuse enabled, host=%q", host)
+	log.Printf("tracing: Langfuse enabled, host=%q", host) //nolint:gosec // host is env var, not user input
 	return flusher, true, nil
 }
