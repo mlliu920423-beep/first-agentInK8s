@@ -1,6 +1,7 @@
 package configstore
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -14,7 +15,7 @@ func TestAgentsCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, err := NewStore(tmpDir, tmpDir) // mcpDir unused for agents test
 	if err != nil {
@@ -32,11 +33,11 @@ func TestAgentsCRUD(t *testing.T) {
 
 	// 2. Create an agent
 	newAgent := &agentcfg.AgentConfig{
-		Name:        "test_agent",
-		Description: "Test agent for CRUD",
+		Name:         "test_agent",
+		Description:  "Test agent for CRUD",
 		SystemPrompt: "You are Test Agent. Be concise.",
-		Tools:       []string{"calculator"},
-		MaxStep:     6,
+		Tools:        []string{"calculator"},
+		MaxStep:      6,
 	}
 	if err := store.CreateAgent(newAgent); err != nil {
 		t.Fatalf("CreateAgent failed: %v", err)
@@ -60,17 +61,17 @@ func TestAgentsCRUD(t *testing.T) {
 	}
 
 	// 4. Create again should conflict
-	if err := store.CreateAgent(newAgent); err != os.ErrExist {
+	if err := store.CreateAgent(newAgent); !errors.Is(err, os.ErrExist) {
 		t.Errorf("expected ErrExist on duplicate create, got %v", err)
 	}
 
 	// 5. Update should work
 	updatedAgent := &agentcfg.AgentConfig{
-		Name:        "test_agent",
-		Description: "Updated description",
+		Name:         "test_agent",
+		Description:  "Updated description",
 		SystemPrompt: "You are Updated Test Agent.",
-		Tools:       []string{"calculator", "weather"},
-		MaxStep:     8,
+		Tools:        []string{"calculator", "weather"},
+		MaxStep:      8,
 	}
 	if err := store.UpdateAgent("test_agent", updatedAgent); err != nil {
 		t.Fatalf("UpdateAgent failed: %v", err)
@@ -95,7 +96,7 @@ func TestAgentsCRUD(t *testing.T) {
 
 	// Get should return not found
 	_, err = store.GetAgent("test_agent")
-	if err != os.ErrNotExist {
+	if !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("expected ErrNotExist after delete, got %v", err)
 	}
 
@@ -115,7 +116,7 @@ func TestMCPCRUDSimple(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, err := NewStore(tmpDir, tmpDir) // agentsDir unused for MCP test
 	if err != nil {
@@ -161,7 +162,7 @@ func TestMCPCRUDSimple(t *testing.T) {
 	}
 
 	_, err = store.GetMCP("test_mcp")
-	if err != os.ErrNotExist {
+	if !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("expected ErrNotExist after delete, got %v", err)
 	}
 }
@@ -171,7 +172,7 @@ func TestAgentValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, err := NewStore(tmpDir, tmpDir)
 	if err != nil {
@@ -202,7 +203,7 @@ func TestUpdateNameMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, err := NewStore(tmpDir, tmpDir)
 	if err != nil {
@@ -230,7 +231,7 @@ func TestAtomicWrite_DoesNotCorruptOnFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, err := NewStore(tmpDir, tmpDir)
 	if err != nil {

@@ -36,10 +36,10 @@ type Store struct {
 // NewStore creates a config store rooted at the given directories.
 // Directories are created if they don't exist.
 func NewStore(agentsDir, mcpDir string) (*Store, error) {
-	if err := os.MkdirAll(agentsDir, 0755); err != nil {
+	if err := os.MkdirAll(agentsDir, 0750); err != nil {
 		return nil, fmt.Errorf("create agents dir %q: %w", agentsDir, err)
 	}
-	if err := os.MkdirAll(mcpDir, 0755); err != nil {
+	if err := os.MkdirAll(mcpDir, 0750); err != nil {
 		return nil, fmt.Errorf("create mcp dir %q: %w", mcpDir, err)
 	}
 	// .trash subdirs are created lazily on first delete
@@ -191,7 +191,7 @@ func (s *Store) DeleteAgent(name string) error {
 	}
 
 	trashDir := filepath.Join(s.agentsDir, ".trash")
-	if err := os.MkdirAll(trashDir, 0755); err != nil {
+	if err := os.MkdirAll(trashDir, 0750); err != nil {
 		return fmt.Errorf("create trash dir: %w", err)
 	}
 
@@ -326,7 +326,7 @@ func (s *Store) DeleteMCP(name string) error {
 	}
 
 	trashDir := filepath.Join(s.mcpDir, ".trash")
-	if err := os.MkdirAll(trashDir, 0755); err != nil {
+	if err := os.MkdirAll(trashDir, 0750); err != nil {
 		return fmt.Errorf("create trash dir: %w", err)
 	}
 
@@ -353,8 +353,8 @@ func (s *Store) writeYamlAtomic(path string, cfg interface{}) error {
 		return fmt.Errorf("marshal yaml: %w", err)
 	}
 
-	// Write tmp file (0644 = user rw, others ro)
-	if err := os.WriteFile(tmpPath, b, 0644); err != nil {
+	// Write tmp file (0600 = user rw only)
+	if err := os.WriteFile(tmpPath, b, 0600); err != nil {
 		_ = os.Remove(tmpPath) // best-effort cleanup
 		return fmt.Errorf("write tmp file: %w", err)
 	}

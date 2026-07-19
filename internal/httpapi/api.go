@@ -39,9 +39,9 @@ type simpleResponse struct {
 }
 
 type reloadResponse struct {
-	Status      string  `json:"status"`
-	TookMs      float64 `json:"took_ms"`
-	Message     string  `json:"message,omitempty"`
+	Status  string  `json:"status"`
+	TookMs  float64 `json:"took_ms"`
+	Message string  `json:"message,omitempty"`
 }
 
 type errorResponse struct {
