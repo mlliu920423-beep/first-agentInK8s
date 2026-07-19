@@ -3,13 +3,46 @@
 > 项目**当前状态 + 决策日志**，进 git、跟代码走。
 > 每次收尾在此更新；跨会话的元知识（工具坑、账号背景等）留在 `~/.claude/memory/`。
 
-**最后更新：2026-07-19 Phase 3 REST API CRUD + 持久化 + 热重载 完成，已合入 main**
+**最后更新：2026-07-19 Phase 4 + Phase 5 完成，全部 5 个 Phase 已合入 main，k8s 部署验证通过**
 
 > 📍 **workbuddy 转型 vision**：[`docs/specs/workbuddy-vision.md`](docs/specs/workbuddy-vision.md)（本项目从 demo 演化为可配置多 agent 产品的 MVP 边界；下一阶段主线）
 > 📍 工程化改进路线：[`docs/roadmap-ai-engineering.md`](docs/roadmap-ai-engineering.md)（AI 辅助开发的业界实践 + 本项目改进清单，2026-07-14 起草，多数已落地）
 > 📍 架构决策记录：[`docs/adr/`](docs/adr/)（每决策一份，从 001 单二进制 / 002 Eino / 003 distroless / 004 branch protection 起）
 
-## 2026-07-19 Phase 3 完成 —— REST API CRUD + 配置持久化 + 热重载
+## 2026-07-19（晚）Phase 4 + Phase 5 完成，全部 Phase 合入，k8s 部署验证
+
+**Phase 4 配置 UI**（PR #12 `1af3194`，squash-merge 合入 main）：
+- ✅ 技术栈升级：shadcn/ui + Tailwind CSS v4 + react-router-dom v7
+- ✅ 侧边栏导航（Chat / Agents Config / MCP Servers / Skills）
+- ✅ ChatPage（从旧 App.tsx 提取，Tailwind 重写）
+- ✅ ConfigAgents / ConfigMCP / ConfigSkills 配置页
+- ✅ lib/api.ts REST API 客户端 + lib/types.ts 类型定义
+- ✅ 28 files, +6968/-838
+
+**Phase 5 Langfuse 可观测性**（PR #14 `8a50855`，squash-merge 合入 main）：
+- ✅ `internal/tracing/setup.go` — Langfuse callback handler
+- ✅ `cmd/server/main.go` boot 流程插入 tracing
+- ✅ 环境变量：`LANGFUSE_ENABLED` / `HOST` / `PUBLIC_KEY` / `SECRET_KEY`
+- ✅ 零代码侵入，默认不启用
+
+**部署修复**（PR #15 `c6acfb6`，squash-merge 合入 main）：
+- ✅ `cmd/server/main.go` — `--copy-configs` 模式，从只读镜像路径复制配置到可写 emptyDir
+- ✅ `k8s/deployment.yaml` — initContainer + emptyDir 卷 + MCP_DIR env
+
+**k8s 部署验证**：
+- ✅ healthz / SSE chat / Agents CRUD API / MCP API / Reload / 前端 SPA
+- ✅ CRUD API 写入配置成功（initContainer 复制 + emptyDir 可写）
+- ✅ 全部 5 个 Phase 在 k8s 上正常运行
+
+**项目全景**：
+| Phase | 状态 | PR |
+|---|---|---|
+| Phase 0 — 元流程 setup | ✅ 完成 | PR #5 |
+| Phase 1 — MCP 声明式加载 | ✅ 完成 | PR #6 |
+| Phase 2 — Registry 可变 + Host 原子 swap | ✅ 完成 | PR #7 |
+| Phase 3 — REST API CRUD + 持久化 | ✅ 完成 | PR #10 |
+| Phase 4 — 前端配置 UI | ✅ 完成 | PR #12 |
+| Phase 5 — Langfuse 可观测性 | ✅ 完成 | PR #14 |
 
 **Phase 3 已完成**（PR #10 `bda9429`，squash-merge 合入 main）：
 
