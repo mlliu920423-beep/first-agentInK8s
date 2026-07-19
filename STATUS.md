@@ -53,6 +53,19 @@
 - [ ] Phase 4：前端配置 UI（shadcn/ui + Tailwind + react-router-dom）
 - [ ] evals 补充 Phase 3 相关 case
 
+## Dependabot CVE 清理（2026-07-19）
+
+**已完成**：
+- ✅ **PR #2** — `buger/jsonparser` 1.1.1 → 1.1.2（HIGH CVE-2026-32285 DoS），squash-merge `b724831`
+- ✅ **PR #1** — `google.golang.org/protobuf` 1.31.0 → 1.33.0（MEDIUM CVE-2024-24786 无限循环），squash-merge `da6184c`
+- ✅ **PR #4** — `vite` + `@vitejs/plugin-react` dev-only（HIGH CVE-2026-53571 + MEDIUM CVE-2026-39365 + MEDIUM CVE-2026-53632），squash-merge `2d2d030`
+- ✅ **PR #3** — esbuild + vite dev-only（被 PR #4 覆盖），关闭
+
+**影响评估**：
+- 2 个 Go 运行时依赖（jsonparser + protobuf）已修复 ✅
+- 4 个 npm dev-only 依赖已修复 ✅
+- Runtime image 是 distroless，不包含 npm 生态，实际暴露面远低于标注严重程度
+
 ## 2026-07-17（晚）Phase 2 完成 —— Registry 可变 + Host 原子 swap
 
 **Phase 2 已完成**（PR #7 `4116ca9`，已 squash-merge 合入 main）：
